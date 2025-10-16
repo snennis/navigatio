@@ -45,5 +45,11 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Standort-Berechtigungen für iOS -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Diese App benötigt Zugriff auf Ihren Standort, um Ihnen Ihre Position auf der Karte anzuzeigen.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Diese App benötigt Zugriff auf Ihren Standort, um Ihnen Ihre Position auf der Karte anzuzeigen.</string>
 </dict>
 </plist>
