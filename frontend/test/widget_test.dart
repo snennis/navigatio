@@ -1,9 +1,7 @@
-// This is a basic Flutter widget test.
+// Widget tests for the Navigatio Map App
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// These tests verify the core functionality of the map application,
+// including UI components and basic interactions.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,20 +9,62 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('Navigatio Map App Tests', () {
+    testWidgets('App loads with correct title', (WidgetTester tester) async {
+      // Build our app and trigger a frame.
+      await tester.pumpWidget(const MyApp());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+      // Verify that the app title is displayed
+      expect(find.text('Navigatio - OSM Karte'), findsOneWidget);
+    });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    testWidgets('App contains map and navigation buttons', (
+      WidgetTester tester,
+    ) async {
+      // Build our app and trigger a frame.
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+      // Verify that essential UI elements are present
+      expect(find.byIcon(Icons.my_location), findsOneWidget);
+      expect(find.byIcon(Icons.add_location), findsOneWidget);
+
+      // Check for zoom controls
+      expect(find.byIcon(Icons.zoom_in), findsOneWidget);
+      expect(find.byIcon(Icons.zoom_out), findsOneWidget);
+      expect(find.byIcon(Icons.gps_fixed), findsOneWidget);
+    });
+
+    testWidgets('Dark/Light mode toggle works', (WidgetTester tester) async {
+      // Build our app and trigger a frame.
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
+
+      // Find and tap the dark/light mode toggle
+      final toggleButton = find.byIcon(Icons.dark_mode);
+      expect(toggleButton, findsOneWidget);
+
+      await tester.tap(toggleButton);
+      await tester.pumpAndSettle();
+
+      // After toggle, should show light mode icon
+      expect(find.byIcon(Icons.light_mode), findsOneWidget);
+    });
+
+    testWidgets('Marker mode toggle works', (WidgetTester tester) async {
+      // Build our app and trigger a frame.
+      await tester.pumpWidget(const MyApp());
+      await tester.pumpAndSettle();
+
+      // Find and tap the add marker button
+      final markerButton = find.byIcon(Icons.add_location);
+      expect(markerButton, findsOneWidget);
+
+      await tester.tap(markerButton);
+      await tester.pumpAndSettle();
+
+      // After toggle, should show place icon (marker mode active)
+      expect(find.byIcon(Icons.place), findsOneWidget);
+    });
   });
 }
