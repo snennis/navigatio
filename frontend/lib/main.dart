@@ -299,9 +299,6 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // Bottom Control Sheet (wie Uber)
-
-
   // Hell/Dunkel Modus Toggle
   void _toggleDarkMode() {
     setState(() {
