@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'models/map_styles.dart';
 
 void main() {
   runApp(const MyApp());
@@ -40,6 +41,9 @@ class _MapScreenState extends State<MapScreen> {
   List<Marker> _userMarkers = []; // Benutzer-gesetzte Marker
   bool _isLoading = true;
   bool _isAddingMarker = false; // Modus zum Marker setzen
+
+  // Kartenstil-Auswahl
+  MapStyle _currentMapStyle = MapStyle.availableStyles[0]; // Standard OSM
 
   @override
   void initState() {
@@ -204,6 +208,40 @@ class _MapScreenState extends State<MapScreen> {
     return [..._markers, ..._userMarkers];
   }
 
+  // Hell/Dunkel Modus Toggle
+  void _toggleDarkMode() {
+    setState(() {
+      if (_currentMapStyle.name.contains('Dunkel')) {
+        // Wechsel zu Hell
+        _currentMapStyle = MapStyle.availableStyles.firstWhere(
+          (style) => style.name.contains('Hell'),
+        );
+      } else {
+        // Wechsel zu Dunkel
+        _currentMapStyle = MapStyle.availableStyles.firstWhere(
+          (style) => style.name.contains('Dunkel'),
+        );
+      }
+    });
+
+    // Bestätigung anzeigen
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Gewechselt zu: ${_currentMapStyle.name}'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: _currentMapStyle.name.contains('Dunkel')
+            ? Colors.grey.shade800
+            : Colors.blue,
+      ),
+    );
+  }
+
+  // Kartenstil-Auswahl Dialog (für Vollständigkeit beibehalten)
+  void _showMapStyleDialog() {
+    // Vereinfacht: Direkter Toggle zwischen Hell und Dunkel
+    _toggleDarkMode();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,6 +249,16 @@ class _MapScreenState extends State<MapScreen> {
         title: const Text('Navigatio - OSM Karte'),
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         actions: [
+          // Hell/Dunkel Modus Toggle
+          IconButton(
+            icon: Icon(
+              _currentMapStyle.name.contains('Dunkel')
+                  ? Icons.light_mode
+                  : Icons.dark_mode,
+            ),
+            onPressed: _toggleDarkMode,
+            tooltip: 'Hell/Dunkel Modus wechseln',
+          ),
           IconButton(
             icon: Icon(
               _isAddingMarker ? Icons.place : Icons.add_location,
@@ -245,28 +293,74 @@ class _MapScreenState extends State<MapScreen> {
                 ],
               ),
             )
-          : FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: _currentLocation,
-                initialZoom: 12.0,
-                minZoom: 3.0,
-                maxZoom: 18.0,
-                onTap: (tapPosition, point) {
-                  if (_isAddingMarker) {
-                    _addMarkerAtPosition(point);
-                  }
-                },
-              ),
+          : Stack(
               children: [
-                // OpenStreetMap Tile Layer
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.navigatio',
-                  maxZoom: 18,
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: _currentLocation,
+                    initialZoom: 12.0,
+                    minZoom: 3.0,
+                    maxZoom: 18.0,
+                    onTap: (tapPosition, point) {
+                      if (_isAddingMarker) {
+                        _addMarkerAtPosition(point);
+                      }
+                    },
+                  ),
+                  children: [
+                    // Dynamische Tile Layer basierend auf ausgewähltem Stil
+                    TileLayer(
+                      urlTemplate: _currentMapStyle.urlTemplate,
+                      subdomains: _currentMapStyle.subdomains ?? [],
+                      userAgentPackageName: 'com.example.navigatio',
+                      maxZoom: 18,
+                    ),
+                    // Marker Layer mit allen Markern
+                    MarkerLayer(markers: _getAllMarkers()),
+                  ],
                 ),
-                // Marker Layer mit allen Markern
-                MarkerLayer(markers: _getAllMarkers()),
+                // Kartenstil-Indikator unten links
+                Positioned(
+                  bottom: 20,
+                  left: 16,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.layers,
+                          size: 16,
+                          color: Colors.blue.shade600,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _currentMapStyle.name,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
       bottomSheet: _userMarkers.isNotEmpty
