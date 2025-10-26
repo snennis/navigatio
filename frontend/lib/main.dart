@@ -16,9 +16,36 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Navigatio - OSM Karten App',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFF1E88E5), // Uber-style Blue
+          secondary: Color(0xFF26C6DA), // Teal accent
+          surface: Color(0xFFF8F9FA),
+          background: Color(0xFFF8F9FA),
+          onSurface: Color(0xFF212121),
+        ),
         useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF212121),
+          elevation: 0,
+        ),
       ),
+      darkTheme: ThemeData(
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF42A5F5), // Lighter blue for dark theme
+          secondary: Color(0xFF4DD0E1), // Lighter teal
+          surface: Color(0xFF1A1A1A),
+          background: Color(0xFF121212),
+          onSurface: Color(0xFFFFFFFF),
+        ),
+        useMaterial3: true,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1A1A1A),
+          foregroundColor: Color(0xFFFFFFFF),
+          elevation: 0,
+        ),
+      ),
+      themeMode: ThemeMode.system,
       home: const MapScreen(),
     );
   }
@@ -88,50 +115,271 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // Erstelle modernen Standort-Marker
+  // Erstelle modernen Standort-Marker (Uber/Miles-Style)
   Widget _buildLocationMarker() {
     return Stack(
       alignment: Alignment.center,
       children: [
-        // Äußerer Kreis (Schatten-Effekt)
+        // Pulsierender Halo-Effekt
         Container(
-          width: 32,
-          height: 32,
+          width: 40,
+          height: 40,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
           ),
         ),
-        // Mittlerer weißer Ring
+        // Mittlerer Schatten-Ring
         Container(
-          width: 20,
-          height: 20,
+          width: 24,
+          height: 24,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Colors.white,
-            border: Border.all(
-              color: Theme.of(context).colorScheme.primary,
-              width: 2.5,
-            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 6,
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
             ],
           ),
         ),
-        // Innerer blauer Punkt
+        // Primärer Marker-Punkt
         Container(
-          width: 8,
-          height: 8,
+          width: 16,
+          height: 16,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Theme.of(context).colorScheme.primary,
+            border: Border.all(
+              color: Colors.white,
+              width: 2,
+            ),
+          ),
+        ),
+        // Kleiner Highlight-Punkt (für 3D-Effekt)
+        Positioned(
+          top: 4,
+          left: 6,
+          child: Container(
+            width: 4,
+            height: 4,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: 0.8),
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  // Moderne Top-Navigation (wie Uber)
+  Widget _buildTopNavigationBar() {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 12,
+      left: 20,
+      right: 20,
+      child: Container(
+        height: 56,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(28),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 20),
+            Icon(
+              Icons.navigation,
+              color: Theme.of(context).colorScheme.primary,
+              size: 24,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Navigatio',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ),
+            // Theme Toggle Button
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: IconButton(
+                onPressed: _toggleDarkMode,
+                icon: Icon(
+                  _currentMapStyle.name.contains('Dunkel')
+                      ? Icons.light_mode_rounded
+                      : Icons.dark_mode_rounded,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                ),
+                iconSize: 20,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Schwimmende Controls (rechts, wie bei Miles)
+  Widget _buildFloatingControls() {
+    return Positioned(
+      right: 20,
+      top: MediaQuery.of(context).padding.top + 80,
+      child: Column(
+        children: [
+          // Location Button
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: FloatingActionButton(
+              heroTag: "location",
+              onPressed: _getCurrentLocation,
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              foregroundColor: Theme.of(context).colorScheme.primary,
+              elevation: 2,
+              child: const Icon(Icons.my_location_rounded),
+            ),
+          ),
+          // Zoom In
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            width: 48,
+            height: 48,
+            child: FloatingActionButton(
+              heroTag: "zoom_in",
+              onPressed: () {
+                final currentZoom = _mapController.camera.zoom;
+                _mapController.move(
+                  _mapController.camera.center,
+                  currentZoom + 1,
+                );
+              },
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
+              elevation: 1,
+              mini: true,
+              child: const Icon(Icons.add, size: 18),
+            ),
+          ),
+          // Zoom Out
+          Container(
+            width: 48,
+            height: 48,
+            child: FloatingActionButton(
+              heroTag: "zoom_out",
+              onPressed: () {
+                final currentZoom = _mapController.camera.zoom;
+                _mapController.move(
+                  _mapController.camera.center,
+                  currentZoom - 1,
+                );
+              },
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
+              elevation: 1,
+              mini: true,
+              child: const Icon(Icons.remove, size: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Bottom Control Sheet (wie Uber)
+  Widget _buildBottomControlSheet() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surface,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Drag Handle
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Map Style Info
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.layers_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _currentMapStyle.name,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                          ),
+                          Text(
+                            _currentMapStyle.description,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -166,26 +414,12 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Navigatio - OSM Karte'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          // Hell/Dunkel Modus Toggle
-          IconButton(
-            icon: Icon(
-              _currentMapStyle.name.contains('Dunkel')
-                  ? Icons.light_mode
-                  : Icons.dark_mode,
-            ),
-            onPressed: _toggleDarkMode,
-            tooltip: 'Hell/Dunkel Modus wechseln',
-          ),
-          IconButton(
-            icon: const Icon(Icons.my_location),
-            onPressed: _getCurrentLocation,
-            tooltip: 'Aktueller Standort',
-          ),
-        ],
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(0),
+        child: AppBar(
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+        ),
       ),
       body: _isLoading
           ? const Center(
@@ -200,6 +434,7 @@ class _MapScreenState extends State<MapScreen> {
             )
           : Stack(
               children: [
+                // Vollbild-Karte
                 FlutterMap(
                   mapController: _mapController,
                   options: MapOptions(
@@ -222,95 +457,22 @@ class _MapScreenState extends State<MapScreen> {
                         markers: [
                           Marker(
                             point: _currentLocation,
-                            width: 32,
-                            height: 32,
+                            width: 40,
+                            height: 40,
                             child: _buildLocationMarker(),
                           ),
                         ],
                       ),
                   ],
                 ),
-                // Kartenstil-Indikator unten links
-                Positioned(
-                  bottom: 20,
-                  left: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.1),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.layers,
-                          size: 16,
-                          color: Colors.blue.shade600,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          _currentMapStyle.name,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                // Moderne Top-Navigation Bar
+                _buildTopNavigationBar(),
+                // Schwimmende Control-Buttons (rechts)
+                _buildFloatingControls(),
+                // Modernes Bottom Sheet (wie bei Uber)
+                _buildBottomControlSheet(),
               ],
             ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          FloatingActionButton(
-            heroTag: "zoom_in",
-            mini: true,
-            onPressed: () {
-              final currentZoom = _mapController.camera.zoom;
-              _mapController.move(
-                _mapController.camera.center,
-                currentZoom + 1,
-              );
-            },
-            child: const Icon(Icons.zoom_in),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: "zoom_out",
-            mini: true,
-            onPressed: () {
-              final currentZoom = _mapController.camera.zoom;
-              _mapController.move(
-                _mapController.camera.center,
-                currentZoom - 1,
-              );
-            },
-            child: const Icon(Icons.zoom_out),
-          ),
-          const SizedBox(height: 8),
-          FloatingActionButton(
-            heroTag: "my_location",
-            onPressed: () {
-              _mapController.move(_currentLocation, 15.0);
-            },
-            child: const Icon(Icons.gps_fixed),
-          ),
-        ],
-      ),
     );
   }
 }
