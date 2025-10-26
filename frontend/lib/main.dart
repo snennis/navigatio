@@ -37,10 +37,7 @@ class _MapScreenState extends State<MapScreen> {
     52.520008,
     13.404954,
   ); // Default: Berlin
-  List<Marker> _markers = [];
-  List<Marker> _userMarkers = []; // Benutzer-gesetzte Marker
   bool _isLoading = true;
-  bool _isAddingMarker = false; // Modus zum Marker setzen
 
   // Kartenstil-Auswahl
   MapStyle _currentMapStyle = MapStyle.availableStyles[0]; // Standard OSM
@@ -48,15 +45,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    _setDefaultMarker();
     _getCurrentLocation();
-  }
-
-  void _setDefaultMarker() {
-    setState(() {
-      _updateLocationMarker();
-      _isLoading = false;
-    });
   }
 
   Future<void> _getCurrentLocation() async {
@@ -66,11 +55,17 @@ class _MapScreenState extends State<MapScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
+          setState(() {
+            _isLoading = false;
+          });
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
+        setState(() {
+          _isLoading = false;
+        });
         return;
       }
 
@@ -81,132 +76,17 @@ class _MapScreenState extends State<MapScreen> {
 
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
-        _updateLocationMarker();
+        _isLoading = false;
       });
     } catch (e) {
       print('Fehler beim Abrufen des Standorts: $e');
-      // Fallback bereits in _setDefaultMarker() gesetzt
-    }
-  }
-
-  void _updateLocationMarker() {
-    _markers = [
-      Marker(
-        point: _currentLocation,
-        width: 40,
-        height: 40,
-        child: const Icon(Icons.location_on, color: Colors.red, size: 40),
-      ),
-    ];
-  }
-
-  void _toggleMarkerMode() {
-    setState(() {
-      _isAddingMarker = !_isAddingMarker;
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          _isAddingMarker
-              ? 'Tippe auf die Karte, um einen Marker zu setzen'
-              : 'Marker-Modus deaktiviert',
-        ),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-  }
-
-  void _addMarkerAtPosition(LatLng position) {
-    if (!_isAddingMarker) return;
-
-    setState(() {
-      _userMarkers.add(
-        Marker(
-          point: position,
-          width: 35,
-          height: 35,
-          child: GestureDetector(
-            onTap: () => _showMarkerDialog(position),
-            child: const Icon(Icons.place, color: Colors.orange, size: 35),
-          ),
-        ),
-      );
-      _isAddingMarker = false; // Automatisch deaktivieren nach dem Setzen
-    });
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Marker gesetzt bei ${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}',
-        ),
-        action: SnackBarAction(
-          label: 'Rückgängig',
-          onPressed: () => _removeLastMarker(),
-        ),
-      ),
-    );
-  }
-
-  void _removeLastMarker() {
-    if (_userMarkers.isNotEmpty) {
       setState(() {
-        _userMarkers.removeLast();
+        _isLoading = false;
       });
     }
   }
 
-  void _clearAllUserMarkers() {
-    setState(() {
-      _userMarkers.clear();
-    });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Alle Marker entfernt')));
-  }
 
-  void _showMarkerDialog(LatLng position) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Marker Info'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Latitude: ${position.latitude.toStringAsFixed(6)}'),
-              Text('Longitude: ${position.longitude.toStringAsFixed(6)}'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Schließen'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _userMarkers.removeWhere(
-                    (marker) => marker.point == position,
-                  );
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Marker entfernt')),
-                );
-              },
-              child: const Text('Entfernen'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  List<Marker> _getAllMarkers() {
-    return [..._markers, ..._userMarkers];
-  }
 
   // Hell/Dunkel Modus Toggle
   void _toggleDarkMode() {
@@ -236,11 +116,7 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  // Kartenstil-Auswahl Dialog (für Vollständigkeit beibehalten)
-  void _showMapStyleDialog() {
-    // Vereinfacht: Direkter Toggle zwischen Hell und Dunkel
-    _toggleDarkMode();
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -259,22 +135,6 @@ class _MapScreenState extends State<MapScreen> {
             onPressed: _toggleDarkMode,
             tooltip: 'Hell/Dunkel Modus wechseln',
           ),
-          IconButton(
-            icon: Icon(
-              _isAddingMarker ? Icons.place : Icons.add_location,
-              color: _isAddingMarker ? Colors.orange : null,
-            ),
-            onPressed: _toggleMarkerMode,
-            tooltip: _isAddingMarker
-                ? 'Marker-Modus beenden'
-                : 'Marker hinzufügen',
-          ),
-          if (_userMarkers.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.clear_all),
-              onPressed: _clearAllUserMarkers,
-              tooltip: 'Alle Marker löschen',
-            ),
           IconButton(
             icon: const Icon(Icons.my_location),
             onPressed: _getCurrentLocation,
@@ -302,11 +162,6 @@ class _MapScreenState extends State<MapScreen> {
                     initialZoom: 12.0,
                     minZoom: 3.0,
                     maxZoom: 18.0,
-                    onTap: (tapPosition, point) {
-                      if (_isAddingMarker) {
-                        _addMarkerAtPosition(point);
-                      }
-                    },
                   ),
                   children: [
                     // Dynamische Tile Layer basierend auf ausgewähltem Stil
@@ -316,8 +171,6 @@ class _MapScreenState extends State<MapScreen> {
                       userAgentPackageName: 'com.example.navigatio',
                       maxZoom: 18,
                     ),
-                    // Marker Layer mit allen Markern
-                    MarkerLayer(markers: _getAllMarkers()),
                   ],
                 ),
                 // Kartenstil-Indikator unten links
@@ -363,27 +216,6 @@ class _MapScreenState extends State<MapScreen> {
                 ),
               ],
             ),
-      bottomSheet: _userMarkers.isNotEmpty
-          ? Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Text(
-                '📍 ${_userMarkers.length} Marker gesetzt',
-                style: Theme.of(context).textTheme.bodyMedium,
-                textAlign: TextAlign.center,
-              ),
-            )
-          : null,
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
