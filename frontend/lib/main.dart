@@ -38,6 +38,7 @@ class _MapScreenState extends State<MapScreen> {
     13.404954,
   ); // Default: Berlin
   bool _isLoading = true;
+  bool _hasLocationPermission = false;
 
   // Kartenstil-Auswahl
   MapStyle _currentMapStyle = MapStyle.availableStyles[0]; // Standard OSM
@@ -76,6 +77,7 @@ class _MapScreenState extends State<MapScreen> {
 
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
+        _hasLocationPermission = true;
         _isLoading = false;
       });
     } catch (e) {
@@ -86,7 +88,52 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-
+  // Erstelle modernen Standort-Marker
+  Widget _buildLocationMarker() {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Äußerer Kreis (Schatten-Effekt)
+        Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+          ),
+        ),
+        // Mittlerer weißer Ring
+        Container(
+          width: 20,
+          height: 20,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white,
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primary,
+              width: 2.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+        ),
+        // Innerer blauer Punkt
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      ],
+    );
+  }
 
   // Hell/Dunkel Modus Toggle
   void _toggleDarkMode() {
@@ -115,8 +162,6 @@ class _MapScreenState extends State<MapScreen> {
       ),
     );
   }
-
-
 
   @override
   Widget build(BuildContext context) {
@@ -171,6 +216,18 @@ class _MapScreenState extends State<MapScreen> {
                       userAgentPackageName: 'com.example.navigatio',
                       maxZoom: 18,
                     ),
+                    // Standort-Marker Layer
+                    if (_hasLocationPermission)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: _currentLocation,
+                            width: 32,
+                            height: 32,
+                            child: _buildLocationMarker(),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
                 // Kartenstil-Indikator unten links
@@ -183,11 +240,11 @@ class _MapScreenState extends State<MapScreen> {
                       vertical: 8,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
+                      color: Colors.white.withValues(alpha: 0.9),
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
