@@ -59,7 +59,11 @@ npm install
 
 2. **Umgebungsvariablen konfigurieren:**
 ```bash
-# .env erstellen
+# Kopiere die Vorlage und bearbeite sie
+cp .env.example .env
+nano .env
+
+# Oder direkt erstellen:
 cat > .env << EOF
 DB_HOST=localhost
 DB_PORT=5432
@@ -67,7 +71,6 @@ DB_NAME=osm2pgsql
 DB_USER=your_username
 DB_PASSWORD=your_password
 PORT=3000
-NODE_ENV=development
 EOF
 ```
 
