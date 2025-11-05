@@ -1,160 +1,241 @@
-# 📍 Navigatio
+# Navigatio 🗺️
 
-> **Navigation App für iOS, Android & Web**  
-> *Universitätsprojekt - 5. Semester*
+Eine moderne Flutter-Navigation-App mit ÖPNV-Integration für Berlin, die PostgreSQL/PostGIS-Datenbanken mit OpenStreetMap-Daten nutzt.
 
-Eine moderne Flutter-basierte Navigations-App mit OpenStreetMap-Integration, die auf allen Plattformen läuft - ohne API-Keys oder Kosten!
+## ✨ Features
 
-## 🚀 Features
+### 🎨 **Moderne UI/UX**
+- **Liquid Glass Design** - Moderne, transparente UI-Elemente
+- **Edge-to-Edge Display** - Vollbild-Kartenerlebnis
+- **Smooth Animations** - Flüssige Zoom- und Bewegungsanimationen
+- **Floating Controls** - Schwebende Steuerelemente wie in professionellen Apps
+- **Hell/Dunkel Modus** - Verschiedene Kartenstile verfügbar
 
-- 🗺️ **OpenStreetMap Integration** - Kostenlose, offene Kartengrundlage
-- 📱 **Cross-Platform** - iOS, Android & Web Support
-- 📍 **GPS-Standorterkennung** - Automatische Positionsbestimmung
-- 🎮 **Interactive Maps** - Zoom, Pan und Marker-Support  
-- 🔒 **Privacy-First** - Keine Google/Apple Maps Dependencies
-- ⚡ **Performance** - Optimiert für mobile Geräte
+### � **ÖPNV-Integration**
+- **Echte Berliner Daten** - Direkte Integration mit PostgreSQL/PostGIS-Datenbank
+- **U-Bahn-Linien** - Visualisierung des kompletten U-Bahn-Netzes
+- **Farbkodierung** - Unterschiedliche Farben für verschiedene Verkehrsmittel:
+  - � U-Bahn: Blau
+  - 🟢 S-Bahn: Grün  
+  - 🟣 Bus: Lila
+  - 🩷 Tram: Rosa
+  - 🔴 Regionalbahn: Rot
 
-## 📁 Projektstruktur
+### 🚀 **Performance**
+- **Smart Caching** - 5-Minuten-Cache für API-Abfragen
+- **Intelligente Bounding Boxes** - Zoom-basiertes Laden von Daten
+- **Debounced Loading** - Optimierte Datenabfragen beim Kartenbewegen
+
+## 🏗️ Architektur
 
 ```
-navigatio/
-├── frontend/          # Flutter App
-│   ├── lib/          # Dart Source Code
-│   ├── android/      # Android-spezifische Konfiguration
-│   ├── ios/          # iOS-spezifische Konfiguration
-│   └── web/          # Web-spezifische Konfiguration
-├── backend/          # (Future) Backend Services
-└── README.md         # Diese Datei
+├── frontend/           # Flutter App
+│   ├── lib/
+│   │   ├── models/     # Datenmodelle (ÖPNV, Kartenstile)
+│   │   ├── services/   # API-Services
+│   │   └── main.dart   # Haupt-App
+│   └── pubspec.yaml
+└── backend/            # Node.js API Server
+    ├── server.js       # Express Server mit PostGIS
+    ├── package.json
+    └── README.md
 ```
 
-## 🛠️ Installation & Setup
+## 🛠️ Installation
 
-### Voraussetzungen
-- Flutter SDK (>=3.9.2)
-- Dart SDK
-- Android Studio / Xcode (für mobile Entwicklung)
-- Git
+### **Voraussetzungen**
+- Flutter SDK (>=3.0.0)
+- Node.js (>=16.0.0)
+- PostgreSQL mit PostGIS-Extension
+- OSM-Daten in osm2pgsql-Format
 
-### 1. Repository klonen
+### **Backend Setup**
+
+1. **Dependencies installieren:**
 ```bash
-git clone https://github.com/snennis/navigatio.git
-cd navigatio/frontend
+cd backend
+npm install
 ```
 
-### 2. Dependencies installieren
+2. **Umgebungsvariablen konfigurieren:**
 ```bash
+# .env erstellen
+cat > .env << EOF
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=osm2pgsql
+DB_USER=your_username
+DB_PASSWORD=your_password
+PORT=3000
+NODE_ENV=development
+EOF
+```
+
+3. **Datenbank vorbereiten:**
+```sql
+-- PostgreSQL-Berechtigungen setzen
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO your_username;
+```
+
+4. **Server starten:**
+```bash
+npm start
+```
+
+### **Frontend Setup**
+
+1. **Dependencies installieren:**
+```bash
+cd frontend
 flutter pub get
 ```
 
-### 3. App starten
-
-#### Web (Chrome)
+2. **App starten:**
 ```bash
-flutter run -d chrome
+flutter run
 ```
 
-#### Android (Gerät/Emulator)
+## 📡 API Endpoints
+
+### **Routen**
+```http
+GET /api/routes?west=13.2&south=52.4&east=13.5&north=52.6
+```
+
+### **Haltestellen** (derzeit deaktiviert)
+```http
+GET /api/stops?west=13.2&south=52.4&east=13.5&north=52.6
+```
+
+### **Cache-Management**
+```http
+GET /cache/stats     # Cache-Statistiken
+DELETE /cache        # Cache leeren
+```
+
+### **Health Check**
+```http
+GET /health          # Server-Status
+```
+
+## �️ Datenbank Schema
+
+Die App nutzt das Standard-osm2pgsql-Schema:
+
+- **`planet_osm_line`** - Für Verkehrslinien (U-Bahn, S-Bahn, etc.)
+- **`planet_osm_point`** - Für Haltestellen und Stationen
+
+### **Wichtige Spalten:**
+- `route` - Art der Route (subway, bus, tram, etc.)
+- `railway` - Bahnart (subway, rail, tram, etc.)
+- `name` - Name der Linie/Station
+- `way` - PostGIS-Geometrie
+
+## 🎮 Bedienung
+
+### **Karten-Navigation**
+- **Pinch-to-Zoom** - Zoomen mit zwei Fingern
+- **Pan** - Karte mit einem Finger bewegen
+- **Zoom-Buttons** - Floating Action Buttons rechts
+
+### **ÖPNV-Modus**
+1. **🚂-Button** rechts oben antippen
+2. **U-Bahn-Linien** werden automatisch geladen
+3. **Karte bewegen** - Neue Daten werden automatisch nachgeladen
+
+### **Kartenstile**
+- **🌙/☀️-Button** - Zwischen Hell- und Dunkelmodus wechseln
+- **Verschiedene Provider** - OSM, CartoDB, etc.
+
+## 🔧 Technische Details
+
+### **Frontend (Flutter)**
+- **flutter_map** - Karten-Widget
+- **latlong2** - Koordinaten-Handling
+- **http** - API-Kommunikation
+- **geolocator** - GPS-Zugriff
+
+### **Backend (Node.js)**
+- **Express** - Web-Framework
+- **pg** - PostgreSQL-Client
+- **cors** - Cross-Origin-Handling
+- **dotenv** - Umgebungsvariablen
+
+### **Datenbank**
+- **PostgreSQL** - Haupt-Datenbank
+- **PostGIS** - Räumliche Erweiterung
+- **osm2pgsql** - OSM-Datenimport
+
+## 🚀 Performance-Optimierungen
+
+### **Caching-System**
+- **In-Memory Cache** - 5 Minuten TTL
+- **Smart Keys** - Gerundete Koordinaten für bessere Cache-Hits
+- **Automatic Cleanup** - Abgelaufene Einträge werden automatisch entfernt
+
+### **Data Loading**
+- **Bounding Box Filtering** - Nur sichtbare Bereiche laden
+- **Zoom-based Limits** - Datenmenge basierend auf Zoom-Level
+- **Debounced Requests** - Verhindert zu häufige API-Calls
+
+### **UI Optimizations**
+- **Smooth Animations** - 60 FPS Zoom-Animationen
+- **Efficient Rendering** - Nur sichtbare Elemente rendern
+- **Memory Management** - Automatische Bereinigung alter Daten
+
+## 🐛 Troubleshooting
+
+### **Backend-Probleme**
 ```bash
-flutter run -d android
+# Datenbankverbindung testen
+psql -U your_username -d osm2pgsql -c "SELECT count(*) FROM planet_osm_line;"
+
+# Logs prüfen
+npm start  # Siehe Console-Output
 ```
 
-#### iOS (iPhone/Simulator)  
+### **Frontend-Probleme**
 ```bash
-flutter run -d ios
+# Flutter-Diagnose
+flutter doctor
+
+# Dependencies neu laden
+flutter clean && flutter pub get
 ```
 
-#### Verfügbare Geräte anzeigen
-```bash
-flutter devices
-```
+### **Häufige Fehler**
+- **"role does not exist"** → PostgreSQL-Benutzer in .env prüfen
+- **"permission denied"** → GRANT-Rechte für Tabellen setzen
+- **"No routes loaded"** → Datenbank-Inhalt und WHERE-Clause prüfen
 
-## 📦 Verwendete Packages
+## 📈 Roadmap
 
-- **flutter_map** `^7.0.2` - OpenStreetMap Integration
-- **latlong2** `^0.9.1` - Koordinaten-Handling  
-- **geolocator** `^12.0.0` - GPS & Location Services
-- **cupertino_icons** `^1.0.8` - iOS-Style Icons
+- [ ] **Routing-Integration** - Turn-by-Turn-Navigation
+- [ ] **Offline-Karten** - Lokale Kartendaten
+- [ ] **Real-time ÖPNV** - Live-Verspätungen
+- [ ] **Multi-Modal** - Kombinierte Verkehrsmittel
+- [ ] **Accessibility** - Barrierefreiheit
+- [ ] **PWA Support** - Web-Version
 
-## 🔧 Konfiguration
-
-### Android Berechtigungen
-Die App benötigt folgende Berechtigungen in `android/app/src/main/AndroidManifest.xml`:
-```xml
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-<uses-permission android:name="android.permission.INTERNET" />
-```
-
-### iOS Berechtigungen  
-Standort-Berechtigungen in `ios/Runner/Info.plist`:
-```xml
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>Diese App benötigt Zugriff auf Ihren Standort für die Navigation.</string>
-```
-
-## 🎯 Funktionen
-
-### Aktuelle Features
-- ✅ Interactive OpenStreetMap
-- ✅ GPS-Standorterkennung  
-- ✅ Zoom-Kontrollen (In/Out)
-- ✅ Standort-Marker
-- ✅ "Mein Standort" Button
-- ✅ Cross-Platform Support
-
-### Geplante Features  
-- 🔄 Navigation & Routing
-- 🔄 Offline-Karten
-- 🔄 POI (Points of Interest)
-- 🔄 Favoriten-System
-- 🔄 Backend-Integration
-
-## 🏗️ Entwicklung
-
-### Hot Reload
-Während der Entwicklung kannst du Hot Reload verwenden:
-- **r** - Hot Reload
-- **R** - Hot Restart  
-- **q** - App beenden
-
-### Build für Production
-```bash
-# Android APK
-flutter build apk
-
-# iOS IPA  
-flutter build ios
-
-# Web
-flutter build web
-```
-
-## 🤝 Beitragen
+## 🤝 Contributing
 
 1. Fork das Repository
-2. Erstelle einen Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Committe deine Änderungen (`git commit -m 'Add some AmazingFeature'`)
-4. Push zum Branch (`git push origin feature/AmazingFeature`)
-5. Öffne eine Pull Request
+2. Feature-Branch erstellen (`git checkout -b feature/amazing-feature`)
+3. Changes committen (`git commit -m 'Add amazing feature'`)
+4. Branch pushen (`git push origin feature/amazing-feature`)
+5. Pull Request öffnen
 
-## 🆘 Troubleshooting
+## 📄 Lizenz
 
-### Häufige Probleme
+Dieses Projekt ist unter der MIT-Lizenz lizenziert.
 
-**1. "No pubspec.yaml file found"**
-```bash
-# Stelle sicher, dass du im frontend/ Ordner bist
-cd frontend/
-```
+## 👥 Autoren
 
-**2. Standort-Berechtigung verweigert**
-- Android: Berechtigungen in den App-Einstellungen aktivieren
-- iOS: Standort-Zugriff in iOS-Einstellungen erlauben
+- **Dennis** - Initial work - Navigation App für 5. Semester
 
-**3. Karten laden nicht**  
-- Internet-Verbindung überprüfen
-- Firewall/Proxy-Einstellungen kontrollieren
+## 🙏 Danksagungen
 
----
-
-*Letztes Update: Oktober 2025*
+- **OpenStreetMap** - Geodaten
+- **Flutter Team** - Framework
+- **PostGIS** - Räumliche Datenbank-Erweiterung
+- **osm2pgsql** - OSM-Import-Tool
