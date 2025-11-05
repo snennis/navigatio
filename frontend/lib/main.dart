@@ -127,73 +127,29 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
-  // Moderne Top-Navigation (wie Uber)
-  Widget _buildTopNavigationBar() {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 12,
-      left: 20,
-      right: 20,
-      child: Container(
-        height: 56,
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            const SizedBox(width: 20),
-            Icon(
-              Icons.navigation,
-              color: Theme.of(context).colorScheme.primary,
-              size: 24,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Navigatio',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
-              ),
-            ),
-            // Theme Toggle Button
-            Container(
-              margin: const EdgeInsets.only(right: 8),
-              child: IconButton(
-                onPressed: _toggleDarkMode,
-                icon: Icon(
-                  _currentMapStyle.name.contains('Dunkel')
-                      ? Icons.light_mode_rounded
-                      : Icons.dark_mode_rounded,
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurface.withValues(alpha: 0.7),
-                ),
-                iconSize: 20,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // Schwimmende Controls (rechts, wie bei Miles)
   Widget _buildFloatingControls() {
     return Positioned(
       right: 20,
-      top: MediaQuery.of(context).padding.top + 80,
+      top: MediaQuery.of(context).padding.top + 12,
       child: Column(
         children: [
+          // Theme Toggle Button
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: FloatingActionButton(
+              heroTag: "theme",
+              onPressed: _toggleDarkMode,
+              backgroundColor: Theme.of(context).colorScheme.surface,
+              foregroundColor: Theme.of(context).colorScheme.onSurface,
+              elevation: 2,
+              child: Icon(
+                _currentMapStyle.name.contains('Dunkel')
+                    ? Icons.light_mode_rounded
+                    : Icons.dark_mode_rounded,
+              ),
+            ),
+          ),
           // Location Button
           Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -319,8 +275,6 @@ class _MapScreenState extends State<MapScreen> {
                       ],
                     ),
                   ),
-                  // Moderne Top-Navigation Bar
-                  _buildTopNavigationBar(),
                   // Schwimmende Control-Buttons (rechts)
                   _buildFloatingControls(),
                 ],
