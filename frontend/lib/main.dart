@@ -3,7 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 import 'models/map_styles.dart';
+import 'models/oepnv_models.dart';
+import 'services/oepnv_service.dart';
 
 void main() {
   // System UI für Edge-to-Edge konfigurieren
@@ -86,6 +89,13 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   // Animation Controller für smooth zooming
   late AnimationController _zoomAnimationController;
 
+  // ÖPNV Daten
+  List<OepnvData> _oepnvStops = [];
+  List<OepnvRoute> _oepnvRoutes = [];
+  bool _showOepnvData = true;
+  Timer? _debounceTimer;
+  LatLng? _lastLoadedCenter;
+
   @override
   void initState() {
     super.initState();
@@ -101,6 +111,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _zoomAnimationController.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
@@ -139,6 +150,86 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  // ÖPNV Daten laden
+  Future<void> _loadOepnvData() async {
+    if (!_showOepnvData) return;
+
+    try {
+      // Erweiterte Bounding Box für ganz Berlin
+      final center = _mapController.camera.center;
+      final zoom = _mapController.camera.zoom;
+
+      // Dynamische Bounding Box basierend auf Zoom-Level
+      double delta = zoom > 12
+          ? 0.02
+          : zoom > 10
+          ? 0.05
+          : 0.1;
+
+      final west = center.longitude - delta;
+      final south = center.latitude - delta;
+      final east = center.longitude + delta;
+      final north = center.latitude + delta;
+
+      print(
+        '🔍 Loading ÖPNV data for bounds: W=$west S=$south E=$east N=$north (zoom=$zoom)',
+      );
+
+      // ÖPNV Routes laden (Stops erstmal deaktiviert)
+      // final stops = await OepnvService.getStops(
+      //   west: west,
+      //   south: south,
+      //   east: east,
+      //   north: north,
+      // );
+
+      final routes = await OepnvService.getRoutes(
+        west: west,
+        south: south,
+        east: east,
+        north: north,
+      );
+      setState(() {
+        // _oepnvStops = stops;
+        _oepnvStops = []; // Keine Stops für jetzt
+        _oepnvRoutes = routes;
+      });
+
+      print('✅ Loaded ${routes.length} ÖPNV routes (stops disabled)');
+
+      // Erfolg-Feedback
+      if (routes.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.train, color: Colors.white, size: 16),
+                const SizedBox(width: 8),
+                Text('${routes.length} ÖPNV-Linien geladen'),
+              ],
+            ),
+            backgroundColor: Colors.green.shade600,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('❌ Error loading ÖPNV data: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.white, size: 16),
+              const SizedBox(width: 8),
+              Text('Fehler beim Laden der ÖPNV-Daten: $e'),
+            ],
+          ),
+          backgroundColor: Colors.red.shade600,
+        ),
+      );
     }
   }
 
@@ -278,9 +369,105 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               child: const Icon(Icons.remove, size: 18),
             ),
           ),
+          // ÖPNV Toggle
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            width: 48,
+            height: 48,
+            child: FloatingActionButton(
+              heroTag: "oepnv_toggle",
+              onPressed: () {
+                setState(() {
+                  _showOepnvData = !_showOepnvData;
+                });
+                if (_showOepnvData) {
+                  _loadOepnvData();
+                }
+              },
+              backgroundColor: _showOepnvData
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surface,
+              foregroundColor: _showOepnvData
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Theme.of(context).colorScheme.onSurface,
+              elevation: 1,
+              mini: true,
+              child: Icon(
+                _showOepnvData ? Icons.train : Icons.train_outlined,
+                size: 18,
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  // ÖPNV Hilfsfunktionen
+  Color _getStopColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'bus_stop':
+      case 'bus':
+        return Colors.purple; // Buslinien = Lila
+      case 'tram_stop':
+      case 'tram':
+        return Colors.pink; // Tram = Rosa
+      case 'subway_entrance':
+      case 'station':
+        return Colors.blue; // U-Bahn = Blau
+      case 'halt':
+      case 'railway_station':
+      case 'rail':
+        return Colors.green; // S-Bahn = Grün
+      case 'train':
+      case 'regional':
+        return Colors.red; // Regionalbahnen = Rot
+      case 'stop_position':
+        return Colors.orange; // Allgemeine Haltestelle
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getStopIcon(String type) {
+    switch (type.toLowerCase()) {
+      case 'bus_stop':
+      case 'bus':
+        return Icons.directions_bus;
+      case 'tram_stop':
+      case 'tram':
+        return Icons.tram;
+      case 'subway_entrance':
+      case 'station':
+        return Icons.subway;
+      case 'railway_station':
+      case 'train':
+        return Icons.train;
+      default:
+        return Icons.place;
+    }
+  }
+
+  Color _getRouteColor(String type) {
+    switch (type.toLowerCase()) {
+      case 'bus':
+        return Colors.purple.withOpacity(0.8); // Buslinien = Lila
+      case 'tram':
+        return Colors.pink.withOpacity(0.8); // Tram = Rosa
+      case 'subway':
+      case 'u-bahn':
+        return Colors.blue.withOpacity(0.8); // U-Bahn = Blau
+      case 'rail':
+      case 'railway':
+      case 's-bahn':
+        return Colors.green.withOpacity(0.8); // S-Bahn = Grün
+      case 'train':
+      case 'regional':
+      case 'light_rail':
+        return Colors.red.withOpacity(0.8); // Regionalbahnen = Rot
+      default:
+        return Colors.grey.withOpacity(0.8);
+    }
   }
 
   // Hell/Dunkel Modus Toggle
@@ -338,6 +525,30 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         initialZoom: 12.0,
                         minZoom: 3.0,
                         maxZoom: 18.0,
+                        // ÖPNV-Daten automatisch laden wenn Karte bewegt wird
+                        onPositionChanged: (MapCamera camera, bool hasGesture) {
+                          if (_showOepnvData && hasGesture) {
+                            // Check if moved significantly (more than 0.01 degrees ≈ 1km)
+                            if (_lastLoadedCenter == null ||
+                                (_lastLoadedCenter!.latitude -
+                                            camera.center.latitude)
+                                        .abs() >
+                                    0.01 ||
+                                (_lastLoadedCenter!.longitude -
+                                            camera.center.longitude)
+                                        .abs() >
+                                    0.01) {
+                              _debounceTimer?.cancel();
+                              _debounceTimer = Timer(
+                                const Duration(milliseconds: 1000),
+                                () {
+                                  _lastLoadedCenter = camera.center;
+                                  _loadOepnvData();
+                                },
+                              );
+                            }
+                          }
+                        },
                         // Smooth Interaktionen aktivieren
                         interactionOptions: const InteractionOptions(
                           flags: InteractiveFlag.all,
@@ -353,6 +564,50 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           userAgentPackageName: 'com.example.navigatio',
                           maxZoom: 18,
                         ),
+                        // ÖPNV Routen Layer (unter den Stops)
+                        if (_showOepnvData && _oepnvRoutes.isNotEmpty)
+                          PolylineLayer(
+                            polylines: _oepnvRoutes.map((route) {
+                              return Polyline(
+                                points: route.coordinates,
+                                strokeWidth: 3.0,
+                                color: _getRouteColor(route.type),
+                              );
+                            }).toList(),
+                          ),
+                        // ÖPNV Stops Layer (über den Routen)
+                        if (_showOepnvData && _oepnvStops.isNotEmpty)
+                          MarkerLayer(
+                            markers: _oepnvStops.map((stop) {
+                              return Marker(
+                                point: stop.location,
+                                width: 20,
+                                height: 20,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: _getStopColor(stop.type),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.3),
+                                        blurRadius: 4,
+                                        offset: const Offset(0, 2),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    _getStopIcon(stop.type),
+                                    size: 12,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
                       ],
                     ),
                   ),
