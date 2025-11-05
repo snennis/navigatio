@@ -72,7 +72,7 @@ class MapScreen extends StatefulWidget {
   State<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends State<MapScreen> {
+class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   LatLng _currentLocation = const LatLng(
     52.520008,
@@ -83,10 +83,25 @@ class _MapScreenState extends State<MapScreen> {
   // Kartenstil-Auswahl
   MapStyle _currentMapStyle = MapStyle.availableStyles[0]; // Standard OSM
 
+  // Animation Controller für smooth zooming
+  late AnimationController _zoomAnimationController;
+
   @override
   void initState() {
     super.initState();
     _getCurrentLocation();
+
+    // Animation Controller für smooth zooming
+    _zoomAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300), // 300ms smooth animation
+      vsync: this,
+    );
+  }
+
+  @override
+  void dispose() {
+    _zoomAnimationController.dispose();
+    super.dispose();
   }
 
   Future<void> _getCurrentLocation() async {
@@ -127,6 +142,78 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // Smooth Zoom In Animation
+  void _smoothZoomIn() async {
+    final currentZoom = _mapController.camera.zoom;
+    final targetZoom = (currentZoom + 1).clamp(3.0, 18.0);
+
+    if (currentZoom >= 18.0) {
+      // Feedback bei maximalem Zoom
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.zoom_in, color: Colors.white, size: 16),
+              SizedBox(width: 8),
+              Text('Maximaler Zoom erreicht'),
+            ],
+          ),
+          duration: const Duration(seconds: 1),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+      );
+      return;
+    }
+
+    // Smooth step-by-step zooming
+    const steps = 8;
+    const stepDuration = 35; // milliseconds per step
+    final zoomIncrement = (targetZoom - currentZoom) / steps;
+
+    for (int i = 1; i <= steps; i++) {
+      await Future.delayed(const Duration(milliseconds: stepDuration));
+      final newZoom = currentZoom + (zoomIncrement * i);
+      _mapController.move(_mapController.camera.center, newZoom);
+    }
+  }
+
+  // Smooth Zoom Out Animation
+  void _smoothZoomOut() async {
+    final currentZoom = _mapController.camera.zoom;
+    final targetZoom = (currentZoom - 1).clamp(3.0, 18.0);
+
+    if (currentZoom <= 3.0) {
+      // Feedback bei minimalem Zoom
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.zoom_out, color: Colors.white, size: 16),
+              SizedBox(width: 8),
+              Text('Minimaler Zoom erreicht'),
+            ],
+          ),
+          duration: const Duration(seconds: 1),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+      );
+      return;
+    }
+
+    // Smooth step-by-step zooming
+    const steps = 8;
+    const stepDuration = 35; // milliseconds per step
+    final zoomDecrement = (currentZoom - targetZoom) / steps;
+
+    for (int i = 1; i <= steps; i++) {
+      await Future.delayed(const Duration(milliseconds: stepDuration));
+      final newZoom = currentZoom - (zoomDecrement * i);
+      _mapController.move(_mapController.camera.center, newZoom);
+    }
+  }
+
   // Schwimmende Controls (rechts, wie bei Miles)
   Widget _buildFloatingControls() {
     return Positioned(
@@ -162,20 +249,14 @@ class _MapScreenState extends State<MapScreen> {
               child: const Icon(Icons.my_location_rounded),
             ),
           ),
-          // Zoom In
+          // Smooth Zoom In
           Container(
             margin: const EdgeInsets.only(bottom: 8),
             width: 48,
             height: 48,
             child: FloatingActionButton(
               heroTag: "zoom_in",
-              onPressed: () {
-                final currentZoom = _mapController.camera.zoom;
-                _mapController.move(
-                  _mapController.camera.center,
-                  currentZoom + 1,
-                );
-              },
+              onPressed: _smoothZoomIn,
               backgroundColor: Theme.of(context).colorScheme.surface,
               foregroundColor: Theme.of(context).colorScheme.onSurface,
               elevation: 1,
@@ -183,19 +264,13 @@ class _MapScreenState extends State<MapScreen> {
               child: const Icon(Icons.add, size: 18),
             ),
           ),
-          // Zoom Out
+          // Smooth Zoom Out
           Container(
             width: 48,
             height: 48,
             child: FloatingActionButton(
               heroTag: "zoom_out",
-              onPressed: () {
-                final currentZoom = _mapController.camera.zoom;
-                _mapController.move(
-                  _mapController.camera.center,
-                  currentZoom - 1,
-                );
-              },
+              onPressed: _smoothZoomOut,
               backgroundColor: Theme.of(context).colorScheme.surface,
               foregroundColor: Theme.of(context).colorScheme.onSurface,
               elevation: 1,
@@ -263,6 +338,12 @@ class _MapScreenState extends State<MapScreen> {
                         initialZoom: 12.0,
                         minZoom: 3.0,
                         maxZoom: 18.0,
+                        // Smooth Interaktionen aktivieren
+                        interactionOptions: const InteractionOptions(
+                          flags: InteractiveFlag.all,
+                          enableMultiFingerGestureRace: true,
+                          scrollWheelVelocity: 0.005, // Smooth scroll wheel
+                        ),
                       ),
                       children: [
                         // Dynamische Tile Layer basierend auf ausgewähltem Stil
