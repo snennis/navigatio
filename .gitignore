@@ -38,4 +38,9 @@ logs/
 
 # Build directories
 build/
-dist/
+dist/# Project sketches and documents
+Projektskizze*.pdf
+*skizze*.pdf
+*.sketch
+docs/internal/
+internal/
