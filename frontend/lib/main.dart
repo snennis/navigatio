@@ -1,10 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'models/map_styles.dart';
 
 void main() {
+  // System UI für Edge-to-Edge konfigurieren
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.dark,
+    ),
+  );
+
+  // Edge-to-Edge Mode aktivieren
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+
   runApp(const MyApp());
 }
 
@@ -269,10 +283,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(0),
-        child: AppBar(elevation: 0, backgroundColor: Colors.transparent),
-      ),
+      // Entferne AppBar komplett für echten Vollbildmodus
       body: _isLoading
           ? const Center(
               child: Column(
@@ -284,32 +295,36 @@ class _MapScreenState extends State<MapScreen> {
                 ],
               ),
             )
-          : Stack(
-              children: [
-                // Vollbild-Karte
-                FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(
-                    initialCenter: _currentLocation,
-                    initialZoom: 12.0,
-                    minZoom: 3.0,
-                    maxZoom: 18.0,
-                  ),
-                  children: [
-                    // Dynamische Tile Layer basierend auf ausgewähltem Stil
-                    TileLayer(
-                      urlTemplate: _currentMapStyle.urlTemplate,
-                      subdomains: _currentMapStyle.subdomains ?? [],
-                      userAgentPackageName: 'com.example.navigatio',
-                      maxZoom: 18,
+          : SizedBox.expand(
+              child: Stack(
+                children: [
+                  // Vollbild-Karte die kompletten Bildschirm ausfüllt
+                  Positioned.fill(
+                    child: FlutterMap(
+                      mapController: _mapController,
+                      options: MapOptions(
+                        initialCenter: _currentLocation,
+                        initialZoom: 12.0,
+                        minZoom: 3.0,
+                        maxZoom: 18.0,
+                      ),
+                      children: [
+                        // Dynamische Tile Layer basierend auf ausgewähltem Stil
+                        TileLayer(
+                          urlTemplate: _currentMapStyle.urlTemplate,
+                          subdomains: _currentMapStyle.subdomains ?? [],
+                          userAgentPackageName: 'com.example.navigatio',
+                          maxZoom: 18,
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                // Moderne Top-Navigation Bar
-                _buildTopNavigationBar(),
-                // Schwimmende Control-Buttons (rechts)
-                _buildFloatingControls(),
-              ],
+                  ),
+                  // Moderne Top-Navigation Bar
+                  _buildTopNavigationBar(),
+                  // Schwimmende Control-Buttons (rechts)
+                  _buildFloatingControls(),
+                ],
+              ),
             ),
     );
   }
