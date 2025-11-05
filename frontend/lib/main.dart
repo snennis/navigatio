@@ -14,7 +14,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Navigatio - OSM Karten App',
+      title: 'Navigatio',
       theme: ThemeData(
         colorScheme: const ColorScheme.light(
           primary: Color(0xFF1E88E5), // Uber-style Blue
@@ -65,7 +65,6 @@ class _MapScreenState extends State<MapScreen> {
     13.404954,
   ); // Default: Berlin
   bool _isLoading = true;
-  bool _hasLocationPermission = false;
 
   // Kartenstil-Auswahl
   MapStyle _currentMapStyle = MapStyle.availableStyles[0]; // Standard OSM
@@ -104,7 +103,6 @@ class _MapScreenState extends State<MapScreen> {
 
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
-        _hasLocationPermission = true;
         _isLoading = false;
       });
     } catch (e) {
@@ -113,65 +111,6 @@ class _MapScreenState extends State<MapScreen> {
         _isLoading = false;
       });
     }
-  }
-
-  // Erstelle modernen Standort-Marker (Uber/Miles-Style)
-  Widget _buildLocationMarker() {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // Pulsierender Halo-Effekt
-        Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Theme.of(
-              context,
-            ).colorScheme.primary.withValues(alpha: 0.15),
-          ),
-        ),
-        // Mittlerer Schatten-Ring
-        Container(
-          width: 24,
-          height: 24,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-        ),
-        // Primärer Marker-Punkt
-        Container(
-          width: 16,
-          height: 16,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Theme.of(context).colorScheme.primary,
-            border: Border.all(color: Colors.white, width: 2),
-          ),
-        ),
-        // Kleiner Highlight-Punkt (für 3D-Effekt)
-        Positioned(
-          top: 4,
-          left: 6,
-          child: Container(
-            width: 4,
-            height: 4,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: 0.8),
-            ),
-          ),
-        ),
-      ],
-    );
   }
 
   // Moderne Top-Navigation (wie Uber)
@@ -364,18 +303,6 @@ class _MapScreenState extends State<MapScreen> {
                       userAgentPackageName: 'com.example.navigatio',
                       maxZoom: 18,
                     ),
-                    // Standort-Marker Layer
-                    if (_hasLocationPermission)
-                      MarkerLayer(
-                        markers: [
-                          Marker(
-                            point: _currentLocation,
-                            width: 40,
-                            height: 40,
-                            child: _buildLocationMarker(),
-                          ),
-                        ],
-                      ),
                   ],
                 ),
                 // Moderne Top-Navigation Bar
