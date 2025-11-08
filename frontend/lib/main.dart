@@ -96,6 +96,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   Timer? _debounceTimer;
   LatLng? _lastLoadedCenter;
 
+  // User Location
+  LatLng? _userLocation;
+
   @override
   void initState() {
     super.initState();
@@ -143,13 +146,42 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
       setState(() {
         _currentLocation = LatLng(position.latitude, position.longitude);
+        _userLocation = LatLng(position.latitude, position.longitude);
         _isLoading = false;
       });
+
+      // Karte zum aktuellen Standort bewegen
+      _mapController.move(_userLocation!, 16.0);
     } catch (e) {
       print('Fehler beim Abrufen des Standorts: $e');
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  // Zur aktuellen Position zurückkehren
+  void _centerOnUserLocation() async {
+    if (_userLocation != null) {
+      _mapController.move(_userLocation!, 16.0);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.my_location, color: Colors.white, size: 16),
+              SizedBox(width: 8),
+              Text('Zur aktuellen Position'),
+            ],
+          ),
+          duration: Duration(seconds: 1),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    } else {
+      // Falls noch kein Standort vorhanden, neu abrufen
+      _getCurrentLocation();
     }
   }
 
@@ -333,7 +365,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             margin: const EdgeInsets.only(bottom: 12),
             child: FloatingActionButton(
               heroTag: "location",
-              onPressed: _getCurrentLocation,
+              onPressed: _centerOnUserLocation,
               backgroundColor: Theme.of(context).colorScheme.surface,
               foregroundColor: Theme.of(context).colorScheme.primary,
               elevation: 2,
@@ -607,6 +639,39 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                 ),
                               );
                             }).toList(),
+                          ),
+                        // User Location Marker (über allen anderen)
+                        if (_userLocation != null)
+                          MarkerLayer(
+                            markers: [
+                              Marker(
+                                point: _userLocation!,
+                                width: 40,
+                                height: 40,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 3,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.blue.withOpacity(0.3),
+                                        blurRadius: 8,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.person,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                       ],
                     ),
