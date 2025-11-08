@@ -15,6 +15,19 @@ const pool = new Pool({
   port: process.env.DB_PORT,
 });
 
+// Initialize database extensions
+async function initializeDatabase() {
+  try {
+    // Enable trigram extension for fuzzy search
+    await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm;');
+    console.log('Database extensions initialized');
+  } catch (error) {
+    console.warn('Could not initialize database extensions:', error.message);
+  }
+}
+
+initializeDatabase();
+
 // Cache System
 const cache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 Minuten in Millisekunden
@@ -259,8 +272,73 @@ app.get('/api/routes', async (req, res) => {
   }
 });
 
-// Health check
-app.get('/health', (req, res) => {
+// API Endpoint für Haltestellensuche (Fuzzy Search)
+app.get('/api/stations/search', async (req, res) => {
+  try {
+    console.log('Searching stations with query:', req.query.q);
+    
+    const searchQuery = req.query.q;
+    if (!searchQuery || searchQuery.length < 2) {
+      return res.json([]);
+    }
+    
+    // PostgreSQL Fuzzy Search mit trigram similarity
+    const query = `
+      SELECT 
+        osm_id,
+        name,
+        public_transport,
+        railway,
+        highway,
+        ST_X(ST_Transform(way, 4326)) as longitude,
+        ST_Y(ST_Transform(way, 4326)) as latitude,
+        similarity(name, $1) as similarity_score
+      FROM planet_osm_point 
+      WHERE name IS NOT NULL
+        AND name != ''
+        AND (
+          public_transport IN ('stop_position', 'platform', 'station')
+          OR railway IN ('station', 'halt', 'tram_stop', 'subway_entrance')
+          OR highway = 'bus_stop'
+        )
+        AND (
+          name ILIKE $2
+          OR similarity(name, $1) > 0.3
+        )
+      ORDER BY 
+        similarity_score DESC,
+        name ASC
+      LIMIT 20
+    `;
+    
+    const searchPattern = `%${searchQuery}%`;
+    const result = await pool.query(query, [searchQuery, searchPattern]);
+    
+    const stations = result.rows.map(row => ({
+      id: row.osm_id,
+      name: row.name,
+      type: row.public_transport || row.railway || row.highway,
+      coordinates: {
+        lat: parseFloat(row.latitude),
+        lng: parseFloat(row.longitude)
+      },
+      similarity: parseFloat(row.similarity_score)
+    }));
+    
+    console.log(`Found ${stations.length} stations for query "${searchQuery}"`);
+    res.json(stations);
+    
+  } catch (error) {
+    console.error('Error searching stations:', error);
+    res.status(500).json({ 
+      error: 'Failed to search stations',
+      details: error.message 
+    });
+  }
+});
+
+// Health Check
+app.get('/health', async (req, res) => {
   res.json({ status: 'OK', message: 'ÖPNV API is running' });
 });
 

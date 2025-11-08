@@ -6,7 +6,9 @@ import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 import 'models/map_styles.dart';
 import 'models/oepnv_models.dart';
+import 'models/station_models.dart';
 import 'services/oepnv_service.dart';
+import 'widgets/connection_search_widget.dart';
 
 void main() {
   // System UI für Edge-to-Edge konfigurieren
@@ -99,6 +101,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   // User Location
   LatLng? _userLocation;
   StreamSubscription<Position>? _positionStreamSubscription;
+
+  // Connection Search
+  ConnectionSearch _connectionSearch = ConnectionSearch();
+  bool _showConnectionSearch = false;
 
   @override
   void initState() {
@@ -202,6 +208,35 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     } else {
       // Falls noch kein Standort vorhanden, neu abrufen
       _getCurrentLocation();
+    }
+  }
+
+  // Verbindungssuche anzeigen/verstecken
+  void _toggleConnectionSearch() {
+    setState(() {
+      _showConnectionSearch = !_showConnectionSearch;
+    });
+  }
+
+  // Verbindungssuche aktualisieren
+  void _updateConnectionSearch(ConnectionSearch search) {
+    setState(() {
+      _connectionSearch = search;
+    });
+  }
+
+  // Verbindung suchen
+  void _searchConnection() {
+    if (_connectionSearch.isComplete) {
+      // TODO: Implement route calculation
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Suche Verbindung von ${_connectionSearch.fromStation!.name} nach ${_connectionSearch.toStation!.name}',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        ),
+      );
     }
   }
 
@@ -364,6 +399,22 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
       top: MediaQuery.of(context).padding.top + 12,
       child: Column(
         children: [
+          // Connection Search Button
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: FloatingActionButton(
+              heroTag: "search",
+              onPressed: _toggleConnectionSearch,
+              backgroundColor: _showConnectionSearch
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surface,
+              foregroundColor: _showConnectionSearch
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.primary,
+              elevation: 2,
+              child: const Icon(Icons.search_rounded),
+            ),
+          ),
           // Theme Toggle Button
           Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -718,6 +769,23 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                   ),
                   // Schwimmende Control-Buttons (rechts)
                   _buildFloatingControls(),
+
+                  // Connection Search Widget (oben)
+                  if (_showConnectionSearch)
+                    Positioned(
+                      top: MediaQuery.of(context).padding.top + 20,
+                      left: 20,
+                      right: 80, // Platz für die Control-Buttons
+                      child: AnimatedOpacity(
+                        opacity: _showConnectionSearch ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: ConnectionSearchWidget(
+                          initialSearch: _connectionSearch,
+                          onSearchChanged: _updateConnectionSearch,
+                          onSearchPressed: _searchConnection,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
