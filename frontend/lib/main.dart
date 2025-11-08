@@ -98,6 +98,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
   // User Location
   LatLng? _userLocation;
+  StreamSubscription<Position>? _positionStreamSubscription;
 
   @override
   void initState() {
@@ -115,6 +116,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void dispose() {
     _zoomAnimationController.dispose();
     _debounceTimer?.cancel();
+    _positionStreamSubscription?.cancel();
     super.dispose();
   }
 
@@ -152,6 +154,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
 
       // Karte zum aktuellen Standort bewegen
       _mapController.move(_userLocation!, 16.0);
+
+      // Kontinuierliches Standort-Tracking starten
+      _startLocationTracking();
     } catch (e) {
       print('Fehler beim Abrufen des Standorts: $e');
       setState(() {
@@ -160,11 +165,26 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
     }
   }
 
+  // Kontinuierliches Standort-Tracking
+  void _startLocationTracking() {
+    _positionStreamSubscription =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 10, // Update nur bei 10m Bewegung
+          ),
+        ).listen((Position position) {
+          setState(() {
+            _userLocation = LatLng(position.latitude, position.longitude);
+          });
+        });
+  }
+
   // Zur aktuellen Position zurückkehren
   void _centerOnUserLocation() async {
     if (_userLocation != null) {
       _mapController.move(_userLocation!, 16.0);
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Row(
@@ -360,16 +380,36 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               ),
             ),
           ),
-          // Location Button
+          // Location Button with tracking indicator
           Container(
             margin: const EdgeInsets.only(bottom: 12),
-            child: FloatingActionButton(
-              heroTag: "location",
-              onPressed: _centerOnUserLocation,
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              foregroundColor: Theme.of(context).colorScheme.primary,
-              elevation: 2,
-              child: const Icon(Icons.my_location_rounded),
+            child: Stack(
+              children: [
+                FloatingActionButton(
+                  heroTag: "location",
+                  onPressed: _centerOnUserLocation,
+                  backgroundColor: Theme.of(context).colorScheme.surface,
+                  foregroundColor: Theme.of(context).colorScheme.primary,
+                  elevation: 2,
+                  child: const Icon(Icons.my_location_rounded),
+                ),
+                // Tracking indicator
+                if (_positionStreamSubscription != null &&
+                    !_positionStreamSubscription!.isPaused)
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           // Smooth Zoom In
