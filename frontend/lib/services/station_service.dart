@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/station_models.dart';
+import '../models/route_models.dart';
 
 class StationService {
   static const String baseUrl = 'http://localhost:3000/api';
@@ -18,16 +19,22 @@ class StationService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((json) {
-          try {
-            return Station.fromJson(json);
-          } catch (e) {
-            print('Error parsing station: $json, Error: $e');
-            return null;
-          }
-        }).where((station) => station != null).cast<Station>().toList();
+        return data
+            .map((json) {
+              try {
+                return Station.fromJson(json);
+              } catch (e) {
+                print('Error parsing station: $json, Error: $e');
+                return null;
+              }
+            })
+            .where((station) => station != null)
+            .cast<Station>()
+            .toList();
       } else {
-        print('Error searching stations: ${response.statusCode} - ${response.body}');
+        print(
+          'Error searching stations: ${response.statusCode} - ${response.body}',
+        );
         return [];
       }
     } catch (e) {
@@ -46,6 +53,26 @@ class StationService {
       );
     } catch (e) {
       print('Error getting station by ID: $e');
+      return null;
+    }
+  }
+
+  /// Berechnet Route zwischen zwei Haltestellen
+  static Future<RouteResponse?> calculateRoute(String fromId, String toId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/routes/calculate?from=$fromId&to=$toId'),
+      );
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> data = json.decode(response.body);
+        return RouteResponse.fromJson(data);
+      } else {
+        print('Error calculating route: ${response.statusCode} - ${response.body}');
+        return null;
+      }
+    } catch (e) {
+      print('Error calculating route: $e');
       return null;
     }
   }

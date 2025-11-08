@@ -337,6 +337,141 @@ app.get('/api/stations/search', async (req, res) => {
   }
 });
 
+// API Endpoint für Routenberechnung zwischen zwei Haltestellen
+app.get('/api/routes/calculate', async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    
+    if (!from || !to) {
+      return res.status(400).json({ 
+        error: 'Both from and to station IDs are required' 
+      });
+    }
+
+    console.log(`Calculating route from ${from} to ${to}`);
+
+    // 1. Get station coordinates
+    const stationQuery = `
+      SELECT 
+        osm_id,
+        name,
+        ST_X(ST_Transform(way, 4326)) as longitude,
+        ST_Y(ST_Transform(way, 4326)) as latitude
+      FROM planet_osm_point 
+      WHERE osm_id IN ($1, $2)
+    `;
+    
+    const stationResult = await pool.query(stationQuery, [from, to]);
+    
+    if (stationResult.rows.length !== 2) {
+      return res.status(404).json({ 
+        error: 'One or both stations not found' 
+      });
+    }
+
+    const fromStation = stationResult.rows.find(row => row.osm_id === from);
+    const toStation = stationResult.rows.find(row => row.osm_id === to);
+
+    // 2. Simple straight line connection for now (can be enhanced with actual routing)
+    const routeGeometry = {
+      type: "LineString",
+      coordinates: [
+        [fromStation.longitude, fromStation.latitude],
+        [toStation.longitude, toStation.latitude]
+      ]
+    };
+
+    // 3. Find nearby routes/lines for better visualization
+    const nearbyRoutesQuery = `
+      SELECT DISTINCT
+        osm_id,
+        name,
+        route,
+        ST_AsGeoJSON(ST_Transform(way, 4326)) as geometry
+      FROM planet_osm_line 
+      WHERE (
+        route = 'subway'
+        OR railway = 'subway'
+      )
+      AND (
+        ST_DWithin(
+          ST_Transform(way, 4326)::geography,
+          ST_MakePoint($1, $2)::geography,
+          1000
+        )
+        OR ST_DWithin(
+          ST_Transform(way, 4326)::geography,
+          ST_MakePoint($3, $4)::geography,
+          1000
+        )
+      )
+      LIMIT 50
+    `;
+
+    const nearbyRoutes = await pool.query(nearbyRoutesQuery, [
+      fromStation.longitude, fromStation.latitude,
+      toStation.longitude, toStation.latitude
+    ]);
+
+    const response = {
+      route: {
+        type: 'Feature',
+        properties: {
+          from: {
+            id: fromStation.osm_id,
+            name: fromStation.name,
+            coordinates: [fromStation.longitude, fromStation.latitude]
+          },
+          to: {
+            id: toStation.osm_id,
+            name: toStation.name,
+            coordinates: [toStation.longitude, toStation.latitude]
+          },
+          distance: calculateDistance(
+            fromStation.latitude, fromStation.longitude,
+            toStation.latitude, toStation.longitude
+          ),
+          type: 'direct_connection'
+        },
+        geometry: routeGeometry
+      },
+      nearbyRoutes: nearbyRoutes.rows.map(row => ({
+        type: 'Feature',
+        id: row.osm_id,
+        properties: {
+          name: row.name || 'Unnamed Route',
+          route: row.route,
+          type: 'subway'
+        },
+        geometry: JSON.parse(row.geometry)
+      }))
+    };
+
+    console.log(`Route calculated: ${response.route.properties.distance.toFixed(2)}km`);
+    res.json(response);
+
+  } catch (error) {
+    console.error('Error calculating route:', error);
+    res.status(500).json({ 
+      error: 'Failed to calculate route',
+      details: error.message 
+    });
+  }
+});
+
+// Helper function to calculate distance between two points
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of the Earth in kilometers
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon/2) * Math.sin(dLon/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
 // Health Check
 app.get('/health', async (req, res) => {
   res.json({ status: 'OK', message: 'ÖPNV API is running' });

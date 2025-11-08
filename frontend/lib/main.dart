@@ -4,10 +4,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:async';
+import 'dart:math' as math;
 import 'models/map_styles.dart';
 import 'models/oepnv_models.dart';
 import 'models/station_models.dart';
+import 'models/route_models.dart';
 import 'services/oepnv_service.dart';
+import 'services/station_service.dart';
 import 'widgets/connection_search_widget.dart';
 
 void main() {
@@ -105,6 +108,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   // Connection Search
   ConnectionSearch _connectionSearch = ConnectionSearch();
   bool _showConnectionSearch = false;
+  
+  // Route Display
+  RouteResponse? _currentRoute;
+  bool _showOnlyRoute = false;
 
   @override
   void initState() {
@@ -226,18 +233,101 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   // Verbindung suchen
-  void _searchConnection() {
+  void _searchConnection() async {
     if (_connectionSearch.isComplete) {
-      // TODO: Implement route calculation
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Suche Verbindung von ${_connectionSearch.fromStation!.name} nach ${_connectionSearch.toStation!.name}',
+      try {
+        setState(() {
+          _showConnectionSearch = false; // Hide search widget
+        });
+
+        // Show loading
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+                SizedBox(width: 8),
+                Text('Berechne Verbindung...'),
+              ],
+            ),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
           ),
-          backgroundColor: Theme.of(context).colorScheme.primary,
-        ),
-      );
+        );
+
+        // Calculate route
+        final route = await StationService.calculateRoute(
+          _connectionSearch.fromStation!.id,
+          _connectionSearch.toStation!.id,
+        );
+
+        if (route != null) {
+          setState(() {
+            _currentRoute = route;
+            _showOnlyRoute = true;
+          });
+
+          // Zoom to route bounds
+          _zoomToRoute(route);
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Verbindung gefunden: ${route.route.properties.distance.toStringAsFixed(2)} km',
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Keine Verbindung gefunden'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler bei der Routenberechnung: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
+  }
+
+  // Zoom to route bounds
+  void _zoomToRoute(RouteResponse route) {
+    final fromCoord = route.route.properties.from.coordinates;
+    final toCoord = route.route.properties.to.coordinates;
+    
+    // Calculate bounds
+    final south = math.min(fromCoord.latitude, toCoord.latitude);
+    final north = math.max(fromCoord.latitude, toCoord.latitude);
+    final west = math.min(fromCoord.longitude, toCoord.longitude);
+    final east = math.max(fromCoord.longitude, toCoord.longitude);
+    
+    // Add padding
+    final padding = 0.01; // ~1km padding
+    final bounds = LatLngBounds(
+      LatLng(south - padding, west - padding),
+      LatLng(north + padding, east + padding),
+    );
+    
+    _mapController.fitCamera(CameraFit.bounds(bounds: bounds));
+  }
+
+  // Clear route and show all ÖPNV data again
+  void _clearRoute() {
+    setState(() {
+      _currentRoute = null;
+      _showOnlyRoute = false;
+    });
   }
 
   // ÖPNV Daten laden
@@ -405,16 +495,29 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             child: FloatingActionButton(
               heroTag: "search",
               onPressed: _toggleConnectionSearch,
-              backgroundColor: _showConnectionSearch
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.surface,
+              backgroundColor: _showConnectionSearch 
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.surface,
               foregroundColor: _showConnectionSearch
-                  ? Colors.white
-                  : Theme.of(context).colorScheme.primary,
+                ? Colors.white
+                : Theme.of(context).colorScheme.primary,
               elevation: 2,
               child: const Icon(Icons.search_rounded),
             ),
           ),
+          // Clear Route Button (only show when route is displayed)
+          if (_currentRoute != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: FloatingActionButton(
+                heroTag: "clear",
+                onPressed: _clearRoute,
+                backgroundColor: Theme.of(context).colorScheme.error,
+                foregroundColor: Colors.white,
+                elevation: 2,
+                child: const Icon(Icons.clear_rounded),
+              ),
+            ),
           // Theme Toggle Button
           Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -687,8 +790,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           userAgentPackageName: 'com.example.navigatio',
                           maxZoom: 18,
                         ),
-                        // ÖPNV Routen Layer (unter den Stops)
-                        if (_showOepnvData && _oepnvRoutes.isNotEmpty)
+                        // ÖPNV Routen Layer (nur anzeigen wenn keine spezifische Route gewählt)
+                        if (_showOepnvData && _oepnvRoutes.isNotEmpty && !_showOnlyRoute)
                           PolylineLayer(
                             polylines: _oepnvRoutes.map((route) {
                               return Polyline(
@@ -698,8 +801,8 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               );
                             }).toList(),
                           ),
-                        // ÖPNV Stops Layer (über den Routen)
-                        if (_showOepnvData && _oepnvStops.isNotEmpty)
+                        // ÖPNV Stops Layer (nur anzeigen wenn keine spezifische Route gewählt)
+                        if (_showOepnvData && _oepnvStops.isNotEmpty && !_showOnlyRoute)
                           MarkerLayer(
                             markers: _oepnvStops.map((stop) {
                               return Marker(
@@ -731,6 +834,84 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               );
                             }).toList(),
                           ),
+                        // Current Route Layers (when route is selected)
+                        if (_currentRoute != null) ...[
+                          // Route Line
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points: _currentRoute!.route.geometry.coordinates,
+                                strokeWidth: 5.0,
+                                color: Colors.blue,
+                              ),
+                            ],
+                          ),
+                          // Nearby Routes (for context)
+                          PolylineLayer(
+                            polylines: _currentRoute!.nearbyRoutes.map((route) {
+                              return Polyline(
+                                points: route.coordinates,
+                                strokeWidth: 2.0,
+                                color: Colors.grey.withOpacity(0.5),
+                              );
+                            }).toList(),
+                          ),
+                          // Start and End Markers
+                          MarkerLayer(
+                            markers: [
+                              // Start Marker
+                              Marker(
+                                point: _currentRoute!.route.properties.from.coordinates,
+                                width: 50,
+                                height: 50,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.green,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 3),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.3),
+                                        blurRadius: 8,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.play_arrow,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                              // End Marker
+                              Marker(
+                                point: _currentRoute!.route.properties.to.coordinates,
+                                width: 50,
+                                height: 50,
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 3),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.black.withOpacity(0.3),
+                                        blurRadius: 8,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.flag,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                         // User Location Marker (über allen anderen)
                         if (_userLocation != null)
                           MarkerLayer(
