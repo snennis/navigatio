@@ -6,10 +6,8 @@ import 'package:geolocator/geolocator.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'models/map_styles.dart';
-import 'models/oepnv_models.dart';
 import 'models/station_models.dart';
 import 'models/route_models.dart';
-import 'services/oepnv_service.dart';
 import 'services/station_service.dart';
 import 'widgets/connection_search_widget.dart';
 
@@ -94,13 +92,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   // Animation Controller für smooth zooming
   late AnimationController _zoomAnimationController;
 
-  // ÖPNV Daten
-  List<OepnvData> _oepnvStops = [];
-  List<OepnvRoute> _oepnvRoutes = [];
-  bool _showOepnvData = true;
-  Timer? _debounceTimer;
-  LatLng? _lastLoadedCenter;
-
   // User Location
   LatLng? _userLocation;
   StreamSubscription<Position>? _positionStreamSubscription;
@@ -108,10 +99,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   // Connection Search
   ConnectionSearch _connectionSearch = ConnectionSearch();
   bool _showConnectionSearch = false;
-  
+
   // Route Display
   RouteResponse? _currentRoute;
-  bool _showOnlyRoute = false;
 
   @override
   void initState() {
@@ -128,7 +118,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _zoomAnimationController.dispose();
-    _debounceTimer?.cancel();
     _positionStreamSubscription?.cancel();
     super.dispose();
   }
@@ -248,7 +237,10 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                 SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 ),
                 SizedBox(width: 8),
                 Text('Berechne Verbindung...'),
@@ -268,7 +260,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         if (route != null) {
           setState(() {
             _currentRoute = route;
-            _showOnlyRoute = true;
           });
 
           // Zoom to route bounds
@@ -305,109 +296,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void _zoomToRoute(RouteResponse route) {
     final fromCoord = route.route.properties.from.coordinates;
     final toCoord = route.route.properties.to.coordinates;
-    
+
     // Calculate bounds
     final south = math.min(fromCoord.latitude, toCoord.latitude);
     final north = math.max(fromCoord.latitude, toCoord.latitude);
     final west = math.min(fromCoord.longitude, toCoord.longitude);
     final east = math.max(fromCoord.longitude, toCoord.longitude);
-    
+
     // Add padding
     final padding = 0.01; // ~1km padding
     final bounds = LatLngBounds(
       LatLng(south - padding, west - padding),
       LatLng(north + padding, east + padding),
     );
-    
+
     _mapController.fitCamera(CameraFit.bounds(bounds: bounds));
   }
 
-  // Clear route and show all ÖPNV data again
+  // Clear route and return to normal map view
   void _clearRoute() {
     setState(() {
       _currentRoute = null;
-      _showOnlyRoute = false;
     });
-  }
-
-  // ÖPNV Daten laden
-  Future<void> _loadOepnvData() async {
-    if (!_showOepnvData) return;
-
-    try {
-      // Erweiterte Bounding Box für ganz Berlin
-      final center = _mapController.camera.center;
-      final zoom = _mapController.camera.zoom;
-
-      // Dynamische Bounding Box basierend auf Zoom-Level
-      double delta = zoom > 12
-          ? 0.02
-          : zoom > 10
-          ? 0.05
-          : 0.1;
-
-      final west = center.longitude - delta;
-      final south = center.latitude - delta;
-      final east = center.longitude + delta;
-      final north = center.latitude + delta;
-
-      print(
-        '🔍 Loading ÖPNV data for bounds: W=$west S=$south E=$east N=$north (zoom=$zoom)',
-      );
-
-      // ÖPNV Routes laden (Stops erstmal deaktiviert)
-      // final stops = await OepnvService.getStops(
-      //   west: west,
-      //   south: south,
-      //   east: east,
-      //   north: north,
-      // );
-
-      final routes = await OepnvService.getRoutes(
-        west: west,
-        south: south,
-        east: east,
-        north: north,
-      );
-      setState(() {
-        // _oepnvStops = stops;
-        _oepnvStops = []; // Keine Stops für jetzt
-        _oepnvRoutes = routes;
-      });
-
-      print('✅ Loaded ${routes.length} ÖPNV routes (stops disabled)');
-
-      // Erfolg-Feedback
-      if (routes.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.train, color: Colors.white, size: 16),
-                const SizedBox(width: 8),
-                Text('${routes.length} ÖPNV-Linien geladen'),
-              ],
-            ),
-            backgroundColor: Colors.green.shade600,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      print('❌ Error loading ÖPNV data: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white, size: 16),
-              const SizedBox(width: 8),
-              Text('Fehler beim Laden der ÖPNV-Daten: $e'),
-            ],
-          ),
-          backgroundColor: Colors.red.shade600,
-        ),
-      );
-    }
   }
 
   // Smooth Zoom In Animation
@@ -495,12 +405,12 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             child: FloatingActionButton(
               heroTag: "search",
               onPressed: _toggleConnectionSearch,
-              backgroundColor: _showConnectionSearch 
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.surface,
+              backgroundColor: _showConnectionSearch
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surface,
               foregroundColor: _showConnectionSearch
-                ? Colors.white
-                : Theme.of(context).colorScheme.primary,
+                  ? Colors.white
+                  : Theme.of(context).colorScheme.primary,
               elevation: 2,
               child: const Icon(Icons.search_rounded),
             ),
@@ -595,105 +505,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
               child: const Icon(Icons.remove, size: 18),
             ),
           ),
-          // ÖPNV Toggle
-          Container(
-            margin: const EdgeInsets.only(top: 8),
-            width: 48,
-            height: 48,
-            child: FloatingActionButton(
-              heroTag: "oepnv_toggle",
-              onPressed: () {
-                setState(() {
-                  _showOepnvData = !_showOepnvData;
-                });
-                if (_showOepnvData) {
-                  _loadOepnvData();
-                }
-              },
-              backgroundColor: _showOepnvData
-                  ? Theme.of(context).colorScheme.primary
-                  : Theme.of(context).colorScheme.surface,
-              foregroundColor: _showOepnvData
-                  ? Theme.of(context).colorScheme.onPrimary
-                  : Theme.of(context).colorScheme.onSurface,
-              elevation: 1,
-              mini: true,
-              child: Icon(
-                _showOepnvData ? Icons.train : Icons.train_outlined,
-                size: 18,
-              ),
-            ),
-          ),
         ],
       ),
     );
-  }
-
-  // ÖPNV Hilfsfunktionen
-  Color _getStopColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'bus_stop':
-      case 'bus':
-        return Colors.purple; // Buslinien = Lila
-      case 'tram_stop':
-      case 'tram':
-        return Colors.pink; // Tram = Rosa
-      case 'subway_entrance':
-      case 'station':
-        return Colors.blue; // U-Bahn = Blau
-      case 'halt':
-      case 'railway_station':
-      case 'rail':
-        return Colors.green; // S-Bahn = Grün
-      case 'train':
-      case 'regional':
-        return Colors.red; // Regionalbahnen = Rot
-      case 'stop_position':
-        return Colors.orange; // Allgemeine Haltestelle
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getStopIcon(String type) {
-    switch (type.toLowerCase()) {
-      case 'bus_stop':
-      case 'bus':
-        return Icons.directions_bus;
-      case 'tram_stop':
-      case 'tram':
-        return Icons.tram;
-      case 'subway_entrance':
-      case 'station':
-        return Icons.subway;
-      case 'railway_station':
-      case 'train':
-        return Icons.train;
-      default:
-        return Icons.place;
-    }
-  }
-
-  Color _getRouteColor(String type) {
-    switch (type.toLowerCase()) {
-      case 'bus':
-        return Colors.purple.withOpacity(0.8); // Buslinien = Lila
-      case 'tram':
-        return Colors.pink.withOpacity(0.8); // Tram = Rosa
-      case 'subway':
-      case 'u-bahn':
-        return Colors.blue.withOpacity(0.8); // U-Bahn = Blau
-      case 'rail':
-      case 'railway':
-      case 's-bahn':
-        return Colors.green.withOpacity(0.8); // S-Bahn = Grün
-      case 'train':
-      case 'regional':
-      case 'light_rail':
-        return Colors.red.withOpacity(0.8); // Regionalbahnen = Rot
-      default:
-        return Colors.grey.withOpacity(0.8);
-    }
   }
 
   // Hell/Dunkel Modus Toggle
@@ -751,30 +565,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         initialZoom: 12.0,
                         minZoom: 3.0,
                         maxZoom: 18.0,
-                        // ÖPNV-Daten automatisch laden wenn Karte bewegt wird
-                        onPositionChanged: (MapCamera camera, bool hasGesture) {
-                          if (_showOepnvData && hasGesture) {
-                            // Check if moved significantly (more than 0.01 degrees ≈ 1km)
-                            if (_lastLoadedCenter == null ||
-                                (_lastLoadedCenter!.latitude -
-                                            camera.center.latitude)
-                                        .abs() >
-                                    0.01 ||
-                                (_lastLoadedCenter!.longitude -
-                                            camera.center.longitude)
-                                        .abs() >
-                                    0.01) {
-                              _debounceTimer?.cancel();
-                              _debounceTimer = Timer(
-                                const Duration(milliseconds: 1000),
-                                () {
-                                  _lastLoadedCenter = camera.center;
-                                  _loadOepnvData();
-                                },
-                              );
-                            }
-                          }
-                        },
+                        // Railway network loading removed - no longer needed
                         // Smooth Interaktionen aktivieren
                         interactionOptions: const InteractionOptions(
                           flags: InteractiveFlag.all,
@@ -790,85 +581,154 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           userAgentPackageName: 'com.example.navigatio',
                           maxZoom: 18,
                         ),
-                        // ÖPNV Routen Layer (nur anzeigen wenn keine spezifische Route gewählt)
-                        if (_showOepnvData && _oepnvRoutes.isNotEmpty && !_showOnlyRoute)
-                          PolylineLayer(
-                            polylines: _oepnvRoutes.map((route) {
-                              return Polyline(
-                                points: route.coordinates,
-                                strokeWidth: 3.0,
-                                color: _getRouteColor(route.type),
-                              );
-                            }).toList(),
-                          ),
-                        // ÖPNV Stops Layer (nur anzeigen wenn keine spezifische Route gewählt)
-                        if (_showOepnvData && _oepnvStops.isNotEmpty && !_showOnlyRoute)
-                          MarkerLayer(
-                            markers: _oepnvStops.map((stop) {
-                              return Marker(
-                                point: stop.location,
-                                width: 20,
-                                height: 20,
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: _getStopColor(stop.type),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.black.withOpacity(0.3),
-                                        blurRadius: 4,
-                                        offset: const Offset(0, 2),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Icon(
-                                    _getStopIcon(stop.type),
-                                    size: 12,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        // Current Route Layers (when route is selected)
-                        if (_currentRoute != null) ...[
-                          // Route Line
-                          PolylineLayer(
-                            polylines: [
-                              Polyline(
-                                points: _currentRoute!.route.geometry.coordinates,
-                                strokeWidth: 5.0,
-                                color: Colors.blue,
-                              ),
-                            ],
-                          ),
-                          // Nearby Routes (for context)
+                        // Display the actual transit routes (S-Bahn, U-Bahn, Tram, Bus, etc.)
+                        if (_currentRoute != null &&
+                            _currentRoute!.nearbyRoutes.isNotEmpty) ...[
+                          // Transit Routes (alle ÖPNV-Linien der berechneten Route)
                           PolylineLayer(
                             polylines: _currentRoute!.nearbyRoutes.map((route) {
+                              // Farben je nach Transportmittel
+                              Color routeColor = Colors.blue; // Default
+                              double strokeWidth = 4.0;
+
+                              String transportType =
+                                  route.properties['type'] ??
+                                  route.properties['route'] ??
+                                  route.properties['railway'] ??
+                                  route.properties['highway'] ??
+                                  route.properties['public_transport'] ??
+                                  '';
+
+                              // Erweiterte Transportmittel-Erkennung
+                              if (transportType.isEmpty ||
+                                  transportType == 'unknown') {
+                                if (route.properties.containsKey('ref')) {
+                                  final ref = route.properties['ref']
+                                      .toString();
+                                  if (ref.startsWith('U')) {
+                                    transportType = 'subway';
+                                  } else if (ref.startsWith('S')) {
+                                    transportType = 'light_rail';
+                                  } else {
+                                    transportType = 'bus';
+                                  }
+                                } else if (route.properties.containsKey(
+                                  'name',
+                                )) {
+                                  final name = route.properties['name']
+                                      .toString()
+                                      .toLowerCase();
+                                  if (name.contains('u-bahn') ||
+                                      name.contains('u ')) {
+                                    transportType = 'subway';
+                                  } else if (name.contains('s-bahn') ||
+                                      name.contains('s ')) {
+                                    transportType = 'light_rail';
+                                  } else if (name.contains('tram')) {
+                                    transportType = 'tram';
+                                  } else if (name.contains('bus')) {
+                                    transportType = 'bus';
+                                  } else if (name.contains('walk') ||
+                                      name.contains('fuß')) {
+                                    transportType = 'walking';
+                                  }
+                                }
+                              }
+
+                              // Spezielle Behandlung für highway = 'bus_guideway'
+                              if (route.properties['highway'] ==
+                                  'bus_guideway') {
+                                transportType = 'bus';
+                              }
+
+                              switch (transportType.toLowerCase()) {
+                                case 'subway':
+                                case 'u-bahn':
+                                  routeColor = Colors.blue; // U-Bahn blau
+                                  strokeWidth = 5.0;
+                                  break;
+                                case 'light_rail':
+                                case 's-bahn':
+                                case 'suburban':
+                                  routeColor = Colors.green; // S-Bahn grün
+                                  strokeWidth = 5.0;
+                                  break;
+                                case 'tram':
+                                case 'streetcar':
+                                  routeColor = Colors.red; // Tram rot
+                                  strokeWidth = 4.0;
+                                  break;
+                                case 'bus':
+                                  routeColor = Colors.purple; // Bus lila
+                                  strokeWidth = 3.0;
+                                  break;
+                                case 'train':
+                                case 'rail':
+                                case 'railway':
+                                  routeColor = Colors.orange; // Zug orange
+                                  strokeWidth = 5.0;
+                                  break;
+                                case 'ferry':
+                                  routeColor = Colors.cyan; // Fähre cyan
+                                  strokeWidth = 4.0;
+                                  break;
+                                case 'walking':
+                                case 'foot':
+                                  routeColor = Colors
+                                      .green
+                                      .shade700; // Fußweg dunkelgrün
+                                  strokeWidth = 3.0;
+                                  break;
+                                default:
+                                  // Fallback basierend auf anderen Properties
+                                  if (route.properties.containsKey('ref')) {
+                                    final ref = route.properties['ref']
+                                        .toString();
+                                    if (ref.startsWith('U')) {
+                                      routeColor = Colors.blue; // U-Bahn
+                                      strokeWidth = 5.0;
+                                    } else if (ref.startsWith('S')) {
+                                      routeColor = Colors.green; // S-Bahn
+                                      strokeWidth = 5.0;
+                                    } else {
+                                      routeColor = Colors.purple; // Bus
+                                      strokeWidth = 3.0;
+                                    }
+                                  } else {
+                                    routeColor = Colors.blue; // Standard
+                                    strokeWidth = 4.0;
+                                  }
+                              }
+
                               return Polyline(
                                 points: route.coordinates,
-                                strokeWidth: 2.0,
-                                color: Colors.grey.withOpacity(0.5),
+                                strokeWidth: strokeWidth,
+                                color: routeColor,
                               );
                             }).toList(),
                           ),
-                          // Start and End Markers
+                        ],
+                        // Start and End Markers (always show when route exists)
+                        if (_currentRoute != null)
                           MarkerLayer(
                             markers: [
                               // Start Marker
                               Marker(
-                                point: _currentRoute!.route.properties.from.coordinates,
+                                point: _currentRoute!
+                                    .route
+                                    .properties
+                                    .from
+                                    .coordinates,
                                 width: 50,
                                 height: 50,
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: Colors.green,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 3),
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 3,
+                                    ),
                                     boxShadow: [
                                       BoxShadow(
                                         color: Colors.black.withOpacity(0.3),
@@ -886,14 +746,21 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               ),
                               // End Marker
                               Marker(
-                                point: _currentRoute!.route.properties.to.coordinates,
+                                point: _currentRoute!
+                                    .route
+                                    .properties
+                                    .to
+                                    .coordinates,
                                 width: 50,
                                 height: 50,
                                 child: Container(
                                   decoration: BoxDecoration(
                                     color: Colors.red,
                                     shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 3),
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 3,
+                                    ),
                                     boxShadow: [
                                       BoxShadow(
                                         color: Colors.black.withOpacity(0.3),
@@ -903,7 +770,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                                     ],
                                   ),
                                   child: const Icon(
-                                    Icons.flag,
+                                    Icons.stop,
                                     color: Colors.white,
                                     size: 24,
                                   ),
@@ -911,7 +778,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                               ),
                             ],
                           ),
-                        ],
                         // User Location Marker (über allen anderen)
                         if (_userLocation != null)
                           MarkerLayer(
@@ -967,9 +833,372 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                         ),
                       ),
                     ),
+
+                  // Transport Legend (when route is active)
+                  if (_currentRoute != null &&
+                      _currentRoute!.nearbyRoutes.isNotEmpty)
+                    Positioned(
+                      bottom: 100,
+                      left: 20,
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Transportmittel',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            ..._getActiveLegendItems(),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
     );
+  }
+
+  List<Widget> _getActiveLegendItems() {
+    if (_currentRoute == null || _currentRoute!.nearbyRoutes.isEmpty) return [];
+
+    Set<String> activeTypes = {};
+    for (var route in _currentRoute!.nearbyRoutes) {
+      String type =
+          route.properties['type'] ??
+          route.properties['route'] ??
+          route.properties['railway'] ??
+          route.properties['highway'] ??
+          route.properties['public_transport'] ??
+          'unknown';
+
+      // Erweiterte Klassifizierung basierend auf verschiedenen Properties
+      if (type == 'unknown' || type.isEmpty) {
+        if (route.properties.containsKey('ref')) {
+          final ref = route.properties['ref'].toString();
+          if (ref.startsWith('U')) {
+            type = 'subway';
+          } else if (ref.startsWith('S')) {
+            type = 'light_rail';
+          } else {
+            type = 'bus';
+          }
+        } else if (route.properties.containsKey('name')) {
+          final name = route.properties['name'].toString().toLowerCase();
+          if (name.contains('u-bahn') || name.contains('u ')) {
+            type = 'subway';
+          } else if (name.contains('s-bahn') || name.contains('s ')) {
+            type = 'light_rail';
+          } else if (name.contains('tram') || name.contains('straßenbahn')) {
+            type = 'tram';
+          } else if (name.contains('bus')) {
+            type = 'bus';
+          } else if (name.contains('walk') ||
+              name.contains('fuß') ||
+              name.contains('foot')) {
+            type = 'walking';
+          }
+        }
+      }
+
+      // Spezielle Behandlung für highway = 'bus_guideway'
+      if (route.properties['highway'] == 'bus_guideway') {
+        type = 'bus';
+      }
+
+      activeTypes.add(type);
+    }
+
+    return activeTypes.map((type) {
+      Color color;
+      String label;
+      IconData icon;
+
+      switch (type.toLowerCase()) {
+        case 'subway':
+        case 'u-bahn':
+          color = Colors.blue;
+          label = 'U-Bahn';
+          icon = Icons.subway;
+          break;
+        case 'light_rail':
+        case 's-bahn':
+        case 'suburban':
+          color = Colors.green;
+          label = 'S-Bahn';
+          icon = Icons.train;
+          break;
+        case 'tram':
+        case 'streetcar':
+          color = Colors.red;
+          label = 'Tram';
+          icon = Icons.tram;
+          break;
+        case 'bus':
+          color = Colors.purple;
+          label = 'Bus';
+          icon = Icons.directions_bus;
+          break;
+        case 'train':
+        case 'rail':
+        case 'railway':
+          color = Colors.orange;
+          label = 'Zug';
+          icon = Icons.train;
+          break;
+        case 'ferry':
+          color = Colors.cyan;
+          label = 'Fähre';
+          icon = Icons.directions_boat;
+          break;
+        case 'walking':
+        case 'foot':
+          color = Colors.green.shade700;
+          label = 'Fußweg';
+          icon = Icons.directions_walk;
+          break;
+        default:
+          color = Colors.grey;
+          label = 'Andere';
+          icon = Icons.help;
+      }
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 16),
+            const SizedBox(width: 6),
+            Container(width: 20, height: 3, color: color),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  /// Selects and segments the optimal routes for display
+  /// Only shows the most relevant route segments between start and end points
+  List<RouteFeature> _getOptimalRouteSegments() {
+    if (_currentRoute == null || _currentRoute!.nearbyRoutes.isEmpty) {
+      return [];
+    }
+
+    final startCoord = _currentRoute!.route.properties.from.coordinates;
+    final endCoord = _currentRoute!.route.properties.to.coordinates;
+
+    // Group routes by transport type and find the best one for each type
+    Map<String, RouteFeature> bestRoutesByType = {};
+
+    for (var route in _currentRoute!.nearbyRoutes) {
+      String transportType = _getTransportType(route);
+
+      // Check if this route is relevant (passes near start and end points)
+      if (_isRouteRelevant(route, startCoord, endCoord)) {
+        // If we don't have this transport type yet, or this route is better
+        if (!bestRoutesByType.containsKey(transportType) ||
+            _isRouteBetter(
+              route,
+              bestRoutesByType[transportType]!,
+              startCoord,
+              endCoord,
+            )) {
+          bestRoutesByType[transportType] = route;
+        }
+      }
+    }
+
+    // Return only the best route (prioritize subway/light_rail over bus)
+    if (bestRoutesByType.containsKey('subway')) {
+      return [_segmentRoute(bestRoutesByType['subway']!, startCoord, endCoord)];
+    } else if (bestRoutesByType.containsKey('light_rail')) {
+      return [
+        _segmentRoute(bestRoutesByType['light_rail']!, startCoord, endCoord),
+      ];
+    } else if (bestRoutesByType.containsKey('tram')) {
+      return [_segmentRoute(bestRoutesByType['tram']!, startCoord, endCoord)];
+    } else if (bestRoutesByType.containsKey('bus')) {
+      return [_segmentRoute(bestRoutesByType['bus']!, startCoord, endCoord)];
+    }
+
+    // Fallback: return the first route if nothing specific matched
+    return bestRoutesByType.isNotEmpty
+        ? [_segmentRoute(bestRoutesByType.values.first, startCoord, endCoord)]
+        : [];
+  }
+
+  /// Determines the transport type of a route
+  String _getTransportType(RouteFeature route) {
+    String transportType =
+        route.properties['type'] ??
+        route.properties['route'] ??
+        route.properties['railway'] ??
+        route.properties['highway'] ??
+        route.properties['public_transport'] ??
+        '';
+
+    // Enhanced transport type detection
+    if (transportType.isEmpty || transportType == 'unknown') {
+      if (route.properties.containsKey('ref')) {
+        final ref = route.properties['ref'].toString();
+        if (ref.startsWith('U')) {
+          transportType = 'subway';
+        } else if (ref.startsWith('S')) {
+          transportType = 'light_rail';
+        } else {
+          transportType = 'bus';
+        }
+      } else if (route.properties.containsKey('name')) {
+        final name = route.properties['name'].toString().toLowerCase();
+        if (name.contains('u-bahn') ||
+            name.contains('u ') ||
+            name.contains('u7')) {
+          transportType = 'subway';
+        } else if (name.contains('s-bahn') || name.contains('s ')) {
+          transportType = 'light_rail';
+        } else if (name.contains('tram')) {
+          transportType = 'tram';
+        } else if (name.contains('bus')) {
+          transportType = 'bus';
+        }
+      }
+    }
+
+    return transportType.toLowerCase();
+  }
+
+  /// Checks if a route is relevant for the journey (passes near start and end)
+  bool _isRouteRelevant(RouteFeature route, LatLng start, LatLng end) {
+    if (route.coordinates.isEmpty) return false;
+
+    const double maxDistance = 1000; // 1km threshold
+
+    bool nearStart = route.coordinates.any(
+      (coord) => _calculateDistance(coord, start) < maxDistance,
+    );
+    bool nearEnd = route.coordinates.any(
+      (coord) => _calculateDistance(coord, end) < maxDistance,
+    );
+
+    return nearStart && nearEnd;
+  }
+
+  /// Determines if one route is better than another for the current journey
+  bool _isRouteBetter(
+    RouteFeature route1,
+    RouteFeature route2,
+    LatLng start,
+    LatLng end,
+  ) {
+    // Prefer routes that are closer to both start and end points
+    double route1StartDist = route1.coordinates
+        .map((coord) => _calculateDistance(coord, start))
+        .reduce((a, b) => a < b ? a : b);
+    double route1EndDist = route1.coordinates
+        .map((coord) => _calculateDistance(coord, end))
+        .reduce((a, b) => a < b ? a : b);
+
+    double route2StartDist = route2.coordinates
+        .map((coord) => _calculateDistance(coord, start))
+        .reduce((a, b) => a < b ? a : b);
+    double route2EndDist = route2.coordinates
+        .map((coord) => _calculateDistance(coord, end))
+        .reduce((a, b) => a < b ? a : b);
+
+    return (route1StartDist + route1EndDist) <
+        (route2StartDist + route2EndDist);
+  }
+
+  /// Segments a route to only show the relevant part between start and end
+  RouteFeature _segmentRoute(RouteFeature route, LatLng start, LatLng end) {
+    if (route.coordinates.length < 2) return route;
+
+    // Find the closest points on the route to start and end
+    int startIndex = _findClosestPointIndex(route.coordinates, start);
+    int endIndex = _findClosestPointIndex(route.coordinates, end);
+
+    // Ensure proper order
+    if (startIndex > endIndex) {
+      int temp = startIndex;
+      startIndex = endIndex;
+      endIndex = temp;
+    }
+
+    // Extract the segment (with some padding)
+    int segmentStart = (startIndex - 5).clamp(0, route.coordinates.length - 1);
+    int segmentEnd = (endIndex + 5).clamp(0, route.coordinates.length - 1);
+
+    List<LatLng> segmentCoordinates = route.coordinates.sublist(
+      segmentStart,
+      segmentEnd + 1,
+    );
+
+    return RouteFeature(
+      type: route.type,
+      id: route.id,
+      properties: route.properties,
+      coordinates: segmentCoordinates,
+    );
+  }
+
+  /// Finds the index of the point closest to the target
+  int _findClosestPointIndex(List<LatLng> points, LatLng target) {
+    double minDistance = double.infinity;
+    int closestIndex = 0;
+
+    for (int i = 0; i < points.length; i++) {
+      double distance = _calculateDistance(points[i], target);
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestIndex = i;
+      }
+    }
+
+    return closestIndex;
+  }
+
+  /// Calculates distance between two LatLng points in meters
+  double _calculateDistance(LatLng point1, LatLng point2) {
+    const double earthRadius = 6371000; // Earth radius in meters
+
+    double lat1Rad = point1.latitude * (math.pi / 180);
+    double lat2Rad = point2.latitude * (math.pi / 180);
+    double deltaLat = (point2.latitude - point1.latitude) * (math.pi / 180);
+    double deltaLng = (point2.longitude - point1.longitude) * (math.pi / 180);
+
+    double a =
+        math.sin(deltaLat / 2) * math.sin(deltaLat / 2) +
+        math.cos(lat1Rad) *
+            math.cos(lat2Rad) *
+            math.sin(deltaLng / 2) *
+            math.sin(deltaLng / 2);
+    double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+
+    return earthRadius * c;
   }
 }
