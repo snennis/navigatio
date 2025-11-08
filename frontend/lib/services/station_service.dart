@@ -18,9 +18,16 @@ class StationService {
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => Station.fromJson(json)).toList();
+        return data.map((json) {
+          try {
+            return Station.fromJson(json);
+          } catch (e) {
+            print('Error parsing station: $json, Error: $e');
+            return null;
+          }
+        }).where((station) => station != null).cast<Station>().toList();
       } else {
-        print('Error searching stations: ${response.statusCode}');
+        print('Error searching stations: ${response.statusCode} - ${response.body}');
         return [];
       }
     } catch (e) {
@@ -30,7 +37,7 @@ class StationService {
   }
 
   /// Haltestelle anhand der ID abrufen
-  static Future<Station?> getStationById(int id) async {
+  static Future<Station?> getStationById(String id) async {
     try {
       final stations = await searchStations('');
       return stations.firstWhere(

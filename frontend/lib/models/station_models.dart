@@ -1,7 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
 class Station {
-  final int id;
+  final String id;
   final String name;
   final String type;
   final LatLng coordinates;
@@ -17,7 +17,7 @@ class Station {
 
   factory Station.fromJson(Map<String, dynamic> json) {
     return Station(
-      id: json['id'],
+      id: json['id'].toString(),
       name: json['name'],
       type: json['type'] ?? 'unknown',
       coordinates: LatLng(
