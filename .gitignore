@@ -46,3 +46,6 @@ Projektskizze*.pdf
 *.sketch
 docs/internal/
 internal/
+
+# GTFS Files
+GTFS/*.txt
