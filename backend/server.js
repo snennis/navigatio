@@ -1,12 +1,18 @@
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const axios = require('axios');
 require('dotenv').config();
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// PostgreSQL Connection
+// GraphHopper Configuration
+const GRAPHHOPPER_URL = process.env.GRAPHHOPPER_URL || 'http://localhost:8989';
+const GRAPHHOPPER_PROFILE = process.env.GRAPHHOPPER_PROFILE || 'foot';
+const USE_PUBLIC_TRANSPORT = process.env.USE_PUBLIC_TRANSPORT === 'true' || true; // Default: use PT
+
+// PostgreSQL Connection (OSM data)
 const pool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
@@ -15,12 +21,22 @@ const pool = new Pool({
   port: process.env.DB_PORT,
 });
 
+// PostgreSQL Connection (GTFS data)
+const gtfsPool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: 'osm2gtfs',
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
+
 // Initialize database extensions
 async function initializeDatabase() {
   try {
-    // Enable trigram extension for fuzzy search
+    // Enable trigram extension for fuzzy search in both databases
     await pool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm;');
-    console.log('Database extensions initialized');
+    await gtfsPool.query('CREATE EXTENSION IF NOT EXISTS pg_trgm;');
+    console.log('Database extensions initialized for both OSM and GTFS databases');
   } catch (error) {
     console.warn('Could not initialize database extensions:', error.message);
   }
@@ -109,42 +125,36 @@ app.get('/api/stops', async (req, res) => {
     
     let query = `
       SELECT 
-        osm_id,
-        name,
-        public_transport,
-        railway,
-        highway,
-        ST_X(ST_Transform(way, 4326)) as longitude,
-        ST_Y(ST_Transform(way, 4326)) as latitude
-      FROM planet_osm_point 
-      WHERE (
-        public_transport IS NOT NULL 
-        OR railway IN ('station', 'halt', 'tram_stop')
-        OR highway = 'bus_stop'
-      )
+        stop_id,
+        stop_name,
+        stop_lat,
+        stop_lon,
+        location_type
+      FROM stops 
+      WHERE stop_name IS NOT NULL
     `;
     
     const values = [];
     
     // Add bounding box filter if provided
     if (west && south && east && north) {
-      query += ` AND ST_Transform(way, 4326) && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+      query += ` AND stop_lon BETWEEN $1 AND $3 AND stop_lat BETWEEN $2 AND $4`;
       values.push(parseFloat(west), parseFloat(south), parseFloat(east), parseFloat(north));
     } else if (bbox) {
       const [bboxWest, bboxSouth, bboxEast, bboxNorth] = bbox.split(',').map(Number);
-      query += ` AND ST_Transform(way, 4326) && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+      query += ` AND stop_lon BETWEEN $1 AND $3 AND stop_lat BETWEEN $2 AND $4`;
       values.push(bboxWest, bboxSouth, bboxEast, bboxNorth);
     }
     
     // Remove LIMIT to get all stops in the bounding box
     
-    const result = await pool.query(query, values);
+    const result = await gtfsPool.query(query, values);
     
     const stops = result.rows.map(row => ({
-      id: row.osm_id,
-      name: row.name || 'Unnamed Stop',
-      type: row.public_transport || row.railway || row.highway,
-      coordinates: [row.longitude, row.latitude]
+      id: row.stop_id,
+      name: row.stop_name || 'Unnamed Stop',
+      type: row.location_type === 1 ? 'station' : 'stop',
+      coordinates: [row.stop_lon, row.stop_lat]
     }));
     
     const response = {
@@ -282,45 +292,38 @@ app.get('/api/stations/search', async (req, res) => {
       return res.json([]);
     }
     
-    // PostgreSQL Fuzzy Search mit trigram similarity
+    // PostgreSQL Fuzzy Search mit trigram similarity on GTFS stops
     const query = `
       SELECT 
-        osm_id,
-        name,
-        public_transport,
-        railway,
-        highway,
-        ST_X(ST_Transform(way, 4326)) as longitude,
-        ST_Y(ST_Transform(way, 4326)) as latitude,
-        similarity(name, $1) as similarity_score
-      FROM planet_osm_point 
-      WHERE name IS NOT NULL
-        AND name != ''
+        stop_id,
+        stop_name,
+        stop_lat,
+        stop_lon,
+        location_type,
+        similarity(stop_name, $1) as similarity_score
+      FROM stops 
+      WHERE stop_name IS NOT NULL
+        AND stop_name != ''
         AND (
-          public_transport IN ('stop_position', 'platform', 'station')
-          OR railway IN ('station', 'halt', 'tram_stop', 'subway_entrance')
-          OR highway = 'bus_stop'
-        )
-        AND (
-          name ILIKE $2
-          OR similarity(name, $1) > 0.3
+          stop_name ILIKE $2
+          OR similarity(stop_name, $1) > 0.3
         )
       ORDER BY 
         similarity_score DESC,
-        name ASC
+        stop_name ASC
       LIMIT 20
     `;
     
     const searchPattern = `%${searchQuery}%`;
-    const result = await pool.query(query, [searchQuery, searchPattern]);
+    const result = await gtfsPool.query(query, [searchQuery, searchPattern]);
     
     const stations = result.rows.map(row => ({
-      id: row.osm_id,
-      name: row.name,
-      type: row.public_transport || row.railway || row.highway,
+      id: row.stop_id,
+      name: row.stop_name,
+      type: row.location_type === 1 ? 'station' : 'stop',
       coordinates: {
-        lat: parseFloat(row.latitude),
-        lng: parseFloat(row.longitude)
+        lat: parseFloat(row.stop_lat),
+        lng: parseFloat(row.stop_lon)
       },
       similarity: parseFloat(row.similarity_score)
     }));
@@ -337,7 +340,7 @@ app.get('/api/stations/search', async (req, res) => {
   }
 });
 
-// API Endpoint für Routenberechnung zwischen zwei Haltestellen
+// API Endpoint für Routenberechnung zwischen zwei Haltestellen mit GraphHopper
 app.get('/api/routes/calculate', async (req, res) => {
   try {
     const { from, to } = req.query;
@@ -348,20 +351,20 @@ app.get('/api/routes/calculate', async (req, res) => {
       });
     }
 
-    console.log(`Calculating route from ${from} to ${to}`);
+    console.log(`Calculating route from ${from} to ${to} using GraphHopper`);
 
-    // 1. Get station coordinates
+    // 1. Get station coordinates from GTFS database
     const stationQuery = `
       SELECT 
-        osm_id,
-        name,
-        ST_X(ST_Transform(way, 4326)) as longitude,
-        ST_Y(ST_Transform(way, 4326)) as latitude
-      FROM planet_osm_point 
-      WHERE osm_id IN ($1, $2)
+        stop_id,
+        stop_name,
+        stop_lat,
+        stop_lon
+      FROM stops 
+      WHERE stop_id IN ($1, $2)
     `;
     
-    const stationResult = await pool.query(stationQuery, [from, to]);
+    const stationResult = await gtfsPool.query(stationQuery, [from, to]);
     
     if (stationResult.rows.length !== 2) {
       return res.status(404).json({ 
@@ -369,19 +372,246 @@ app.get('/api/routes/calculate', async (req, res) => {
       });
     }
 
-    const fromStation = stationResult.rows.find(row => row.osm_id === from);
-    const toStation = stationResult.rows.find(row => row.osm_id === to);
+    const fromStation = stationResult.rows.find(row => row.stop_id === from);
+    const toStation = stationResult.rows.find(row => row.stop_id === to);
 
-    // 2. Simple straight line connection for now (can be enhanced with actual routing)
-    const routeGeometry = {
-      type: "LineString",
-      coordinates: [
-        [fromStation.longitude, fromStation.latitude],
-        [toStation.longitude, toStation.latitude]
-      ]
-    };
+    console.log('From Station:', {
+      stop_id: fromStation.stop_id,
+      name: fromStation.stop_name,
+      lon: fromStation.stop_lon,
+      lat: fromStation.stop_lat
+    });
+    console.log('To Station:', {
+      stop_id: toStation.stop_id,
+      name: toStation.stop_name,
+      lon: toStation.stop_lon,
+      lat: toStation.stop_lat
+    });
 
-    // 3. Find nearby routes/lines for better visualization
+    // 2. Call GraphHopper API for routing
+    let graphhopperUrl;
+    let graphhopperParams;
+    
+    if (USE_PUBLIC_TRANSPORT) {
+      // Use Public Transport endpoint
+      graphhopperUrl = `${GRAPHHOPPER_URL}/route-pt`;
+      
+      // Get current time or use provided time
+      const now = new Date();
+      const departureTime = now.toISOString();
+      
+      graphhopperParams = {
+        point: [
+          `${fromStation.stop_lat},${fromStation.stop_lon}`,
+          `${toStation.stop_lat},${toStation.stop_lon}`
+        ],
+        'pt.earliest_departure_time': departureTime,
+        'pt.profile': true,
+        locale: 'de',
+        instructions: true,
+        'pt.limit_solutions': 3
+      };
+    } else {
+      // Use regular routing endpoint (foot/bike/car)
+      graphhopperUrl = `${GRAPHHOPPER_URL}/route`;
+      graphhopperParams = {
+        point: [
+          `${fromStation.stop_lat},${fromStation.stop_lon}`,
+          `${toStation.stop_lat},${toStation.stop_lon}`
+        ],
+        profile: GRAPHHOPPER_PROFILE,
+        locale: 'de',
+        instructions: true,
+        calc_points: true,
+        points_encoded: false
+      };
+    }
+
+    console.log('Calling GraphHopper API:', graphhopperUrl, graphhopperParams);
+
+    const paramsSerializer = params => {
+  const parts = [];
+
+  // Serialize points correctly
+  if (Array.isArray(params.point)) {
+    params.point.forEach(p => parts.push(`point=${encodeURIComponent(p)}`));
+  }
+
+  // Serialize the remaining PT params
+  for (const key in params) {
+    if (key === "point") continue;
+    parts.push(`${key}=${encodeURIComponent(params[key])}`);
+  }
+
+  return parts.join("&");
+};
+
+try {
+  graphhopperResponse = await axios.get(graphhopperUrl, {
+    params: graphhopperParams,
+    paramsSerializer,
+    timeout: 10000
+  });
+    } catch (graphhopperError) {
+      console.error('GraphHopper API error:', graphhopperError.message);
+      if (graphhopperError.response) {
+        console.error('GraphHopper error response:', {
+          status: graphhopperError.response.status,
+          data: graphhopperError.response.data
+        });
+      }
+      
+      // Fallback to simple straight line if GraphHopper fails
+      console.log('Falling back to direct connection');
+      const fallbackRoute = {
+        route: {
+          type: 'Feature',
+          properties: {
+            from: {
+              id: fromStation.stop_id,
+              name: fromStation.stop_name,
+              type: 'stop',
+              coordinates: [fromStation.stop_lon, fromStation.stop_lat]
+            },
+            to: {
+              id: toStation.stop_id,
+              name: toStation.stop_name,
+              type: 'stop',
+              coordinates: [toStation.stop_lon, toStation.stop_lat]
+            },
+            distance: calculateDistance(
+              fromStation.stop_lat, fromStation.stop_lon,
+              toStation.stop_lat, toStation.stop_lon
+            ),
+            duration: 0,
+            type: 'direct_connection',
+            source: 'fallback',
+            error: 'GraphHopper not available'
+          },
+          geometry: {
+            type: "LineString",
+            coordinates: [
+              [fromStation.stop_lon, fromStation.stop_lat],
+              [toStation.stop_lon, toStation.stop_lat]
+            ]
+          }
+        },
+        instructions: [],
+        nearbyRoutes: []
+      };
+      
+      return res.json(fallbackRoute);
+    }
+
+    const ghData = graphhopperResponse.data;
+    
+    // Handle both PT and regular routing responses
+    let path;
+    let routeGeometry;
+    let instructions = [];
+    let routeType = 'graphhopper_route';
+    
+    if (USE_PUBLIC_TRANSPORT && ghData.paths) {
+      // Public Transport response
+      if (!ghData.paths || ghData.paths.length === 0) {
+        return res.status(404).json({ 
+          error: 'No public transport route found by GraphHopper' 
+        });
+      }
+      
+      path = ghData.paths[0];
+
+      /* --- GTFS Route Name Enrichment for PT Legs --- */
+      if (path.legs) {
+        for (let i = 0; i < path.legs.length; i++) {
+          const leg = path.legs[i];
+
+          if (leg.type === "pt" && leg.route_id) {
+            try {
+              const routeLookup = await gtfsPool.query(
+                `SELECT route_short_name, route_long_name 
+                 FROM routes 
+                 WHERE route_id = $1
+                 LIMIT 1`,
+                [leg.route_id]
+              );
+
+              if (routeLookup.rows.length > 0) {
+                const r = routeLookup.rows[0];
+                leg.route_short_name = r.route_short_name || null;
+                leg.route_long_name = r.route_long_name || null;
+                leg.display_line = r.route_short_name 
+                  ? r.route_short_name 
+                  : leg.route_id;
+              } else {
+                leg.display_line = leg.route_id;
+              }
+            } catch (lookupError) {
+              console.error("GTFS route lookup failed:", lookupError.message);
+              leg.display_line = leg.route_id;
+            }
+          }
+        }
+      }
+      /* --- END GTFS Route Name Enrichment --- */
+      
+      // PT routes have legs with different transport modes
+      if (path.legs) {
+        // Combine all leg geometries
+        const allCoordinates = [];
+        path.legs.forEach(leg => {
+          if (leg.geometry && leg.geometry.coordinates) {
+            allCoordinates.push(...leg.geometry.coordinates);
+          }
+        });
+        
+        routeGeometry = {
+          type: "LineString",
+          coordinates: allCoordinates
+        };
+        
+        // Extract instructions from legs
+        path.legs.forEach((leg, legIndex) => {
+          if (leg.instructions) {
+            instructions.push(...leg.instructions.map(instr => ({
+              ...instr,
+              legIndex: legIndex,
+              legType: leg.type || 'unknown'
+            })));
+          }
+        });
+        
+        routeType = 'public_transport';
+      } else {
+        // Fallback if no legs
+        routeGeometry = {
+          type: "LineString",
+          coordinates: path.points?.coordinates || [
+            [fromStation.stop_lon, fromStation.stop_lat],
+            [toStation.stop_lon, toStation.stop_lat]
+          ]
+        };
+        instructions = path.instructions || [];
+      }
+    } else {
+      // Regular routing response
+      if (!ghData.paths || ghData.paths.length === 0) {
+        return res.status(404).json({ 
+          error: 'No route found by GraphHopper' 
+        });
+      }
+      
+      path = ghData.paths[0];
+      
+      routeGeometry = {
+        type: "LineString",
+        coordinates: path.points.coordinates // GraphHopper returns [lon, lat] format
+      };
+      
+      instructions = path.instructions || [];
+    }
+
+    // 4. Find nearby routes/lines for better visualization
     const nearbyRoutesQuery = `
       SELECT DISTINCT
         osm_id,
@@ -390,27 +620,27 @@ app.get('/api/routes/calculate', async (req, res) => {
         ST_AsGeoJSON(ST_Transform(way, 4326)) as geometry
       FROM planet_osm_line 
       WHERE (
-        route = 'subway'
-        OR railway = 'subway'
+        route IN ('subway', 'tram', 'bus', 'train')
+        OR railway IN ('subway', 'tram', 'rail')
       )
       AND (
         ST_DWithin(
           ST_Transform(way, 4326)::geography,
           ST_MakePoint($1, $2)::geography,
-          1000
+          500
         )
         OR ST_DWithin(
           ST_Transform(way, 4326)::geography,
           ST_MakePoint($3, $4)::geography,
-          1000
+          500
         )
       )
-      LIMIT 50
+      LIMIT 30
     `;
 
     const nearbyRoutes = await pool.query(nearbyRoutesQuery, [
-      fromStation.longitude, fromStation.latitude,
-      toStation.longitude, toStation.latitude
+      fromStation.stop_lon, fromStation.stop_lat,
+      toStation.stop_lon, toStation.stop_lat
     ]);
 
     const response = {
@@ -418,36 +648,36 @@ app.get('/api/routes/calculate', async (req, res) => {
         type: 'Feature',
         properties: {
           from: {
-            id: fromStation.osm_id,
-            name: fromStation.name,
-            coordinates: [fromStation.longitude, fromStation.latitude]
+            id: fromStation.stop_id,
+            name: fromStation.stop_name,
+            type: 'stop',
+            coordinates: [fromStation.stop_lon, fromStation.stop_lat]
           },
           to: {
-            id: toStation.osm_id,
-            name: toStation.name,
-            coordinates: [toStation.longitude, toStation.latitude]
+            id: toStation.stop_id,
+            name: toStation.stop_name,
+            type: 'stop',
+            coordinates: [toStation.stop_lon, toStation.stop_lat]
           },
-          distance: calculateDistance(
-            fromStation.latitude, fromStation.longitude,
-            toStation.latitude, toStation.longitude
-          ),
-          type: 'direct_connection'
+          distance: path.distance / 1000, // Convert meters to kilometers
+          duration: path.time / 1000, // Convert milliseconds to seconds
+          type: routeType,
+          source: 'graphhopper',
+          profile: USE_PUBLIC_TRANSPORT ? 'pt' : GRAPHHOPPER_PROFILE,
+          transfers: path.transfers || 0,
+          legs: path.legs || []
         },
         geometry: routeGeometry
       },
-      nearbyRoutes: nearbyRoutes.rows.map(row => ({
-        type: 'Feature',
-        id: row.osm_id,
-        properties: {
-          name: row.name || 'Unnamed Route',
-          route: row.route,
-          type: 'subway'
-        },
-        geometry: JSON.parse(row.geometry)
-      }))
+      instructions: instructions,
+      nearbyRoutes: [] // Disabled - showing only the calculated route
     };
 
-    console.log(`Route calculated: ${response.route.properties.distance.toFixed(2)}km`);
+    const routeInfo = USE_PUBLIC_TRANSPORT 
+      ? `${response.route.properties.distance.toFixed(2)}km, ${(response.route.properties.duration / 60).toFixed(1)}min, ${response.route.properties.transfers} transfers`
+      : `${response.route.properties.distance.toFixed(2)}km, ${(response.route.properties.duration / 60).toFixed(1)}min`;
+    
+    console.log(`GraphHopper ${routeType} calculated: ${routeInfo}`);
     res.json(response);
 
   } catch (error) {

@@ -10,6 +10,7 @@ import 'models/station_models.dart';
 import 'models/route_models.dart';
 import 'services/station_service.dart';
 import 'widgets/connection_search_widget.dart';
+import 'widgets/route_details_sheet.dart';
 
 void main() {
   // System UI für Edge-to-Edge konfigurieren
@@ -100,8 +101,9 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   ConnectionSearch _connectionSearch = ConnectionSearch();
   bool _showConnectionSearch = false;
 
-  // Route Display
-  RouteResponse? _currentRoute;
+  // Route Display - Updated to use GraphHopper
+  GraphHopperRouteResponse? _currentRoute;
+  bool _showRouteDetails = false;
 
   @override
   void initState() {
@@ -260,19 +262,11 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         if (route != null) {
           setState(() {
             _currentRoute = route;
+            _showRouteDetails = true;
           });
 
           // Zoom to route bounds
           _zoomToRoute(route);
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Verbindung gefunden: ${route.route.properties.distance.toStringAsFixed(2)} km',
-              ),
-              backgroundColor: Colors.green,
-            ),
-          );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -293,7 +287,7 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   }
 
   // Zoom to route bounds
-  void _zoomToRoute(RouteResponse route) {
+  void _zoomToRoute(GraphHopperRouteResponse route) {
     final fromCoord = route.route.properties.from.coordinates;
     final toCoord = route.route.properties.to.coordinates;
 
@@ -317,7 +311,28 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
   void _clearRoute() {
     setState(() {
       _currentRoute = null;
+      _showRouteDetails = false;
     });
+  }
+
+  // Show route details sheet
+  void _showRouteDetailsSheet() {
+    if (_currentRoute == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.5,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => RouteDetailsSheet(
+          routeResponse: _currentRoute!,
+          onClose: () => Navigator.pop(context),
+        ),
+      ),
+    );
   }
 
   // Smooth Zoom In Animation
@@ -416,6 +431,18 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
             ),
           ),
           // Clear Route Button (only show when route is displayed)
+          if (_currentRoute != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: FloatingActionButton(
+                heroTag: "details",
+                onPressed: _showRouteDetailsSheet,
+                backgroundColor: Theme.of(context).colorScheme.secondary,
+                foregroundColor: Colors.white,
+                elevation: 2,
+                child: const Icon(Icons.info_outline_rounded),
+              ),
+            ),
           if (_currentRoute != null)
             Container(
               margin: const EdgeInsets.only(bottom: 12),
@@ -581,10 +608,24 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
                           userAgentPackageName: 'com.example.navigatio',
                           maxZoom: 18,
                         ),
+                        // GraphHopper Route Line (Main route from GraphHopper)
+                        if (_currentRoute != null)
+                          PolylineLayer(
+                            polylines: [
+                              Polyline(
+                                points:
+                                    _currentRoute!.route.geometry.coordinates,
+                                strokeWidth: 6.0,
+                                color: Colors.blue,
+                                borderStrokeWidth: 2.0,
+                                borderColor: Colors.white,
+                              ),
+                            ],
+                          ),
                         // Display the actual transit routes (S-Bahn, U-Bahn, Tram, Bus, etc.)
                         if (_currentRoute != null &&
                             _currentRoute!.nearbyRoutes.isNotEmpty) ...[
-                          // Transit Routes (alle ÖPNV-Linien der berechneten Route)
+                          // Transit Routes (alle ÖPNV-Linien in der Nähe der Route)
                           PolylineLayer(
                             polylines: _currentRoute!.nearbyRoutes.map((route) {
                               // Farben je nach Transportmittel
@@ -1000,186 +1041,6 @@ class _MapScreenState extends State<MapScreen> with TickerProviderStateMixin {
         ),
       );
     }).toList();
-  }
-
-  /// Selects and segments the optimal routes for display
-  /// Only shows the most relevant route segments between start and end points
-  List<RouteFeature> _getOptimalRouteSegments() {
-    if (_currentRoute == null || _currentRoute!.nearbyRoutes.isEmpty) {
-      return [];
-    }
-
-    final startCoord = _currentRoute!.route.properties.from.coordinates;
-    final endCoord = _currentRoute!.route.properties.to.coordinates;
-
-    // Group routes by transport type and find the best one for each type
-    Map<String, RouteFeature> bestRoutesByType = {};
-
-    for (var route in _currentRoute!.nearbyRoutes) {
-      String transportType = _getTransportType(route);
-
-      // Check if this route is relevant (passes near start and end points)
-      if (_isRouteRelevant(route, startCoord, endCoord)) {
-        // If we don't have this transport type yet, or this route is better
-        if (!bestRoutesByType.containsKey(transportType) ||
-            _isRouteBetter(
-              route,
-              bestRoutesByType[transportType]!,
-              startCoord,
-              endCoord,
-            )) {
-          bestRoutesByType[transportType] = route;
-        }
-      }
-    }
-
-    // Return only the best route (prioritize subway/light_rail over bus)
-    if (bestRoutesByType.containsKey('subway')) {
-      return [_segmentRoute(bestRoutesByType['subway']!, startCoord, endCoord)];
-    } else if (bestRoutesByType.containsKey('light_rail')) {
-      return [
-        _segmentRoute(bestRoutesByType['light_rail']!, startCoord, endCoord),
-      ];
-    } else if (bestRoutesByType.containsKey('tram')) {
-      return [_segmentRoute(bestRoutesByType['tram']!, startCoord, endCoord)];
-    } else if (bestRoutesByType.containsKey('bus')) {
-      return [_segmentRoute(bestRoutesByType['bus']!, startCoord, endCoord)];
-    }
-
-    // Fallback: return the first route if nothing specific matched
-    return bestRoutesByType.isNotEmpty
-        ? [_segmentRoute(bestRoutesByType.values.first, startCoord, endCoord)]
-        : [];
-  }
-
-  /// Determines the transport type of a route
-  String _getTransportType(RouteFeature route) {
-    String transportType =
-        route.properties['type'] ??
-        route.properties['route'] ??
-        route.properties['railway'] ??
-        route.properties['highway'] ??
-        route.properties['public_transport'] ??
-        '';
-
-    // Enhanced transport type detection
-    if (transportType.isEmpty || transportType == 'unknown') {
-      if (route.properties.containsKey('ref')) {
-        final ref = route.properties['ref'].toString();
-        if (ref.startsWith('U')) {
-          transportType = 'subway';
-        } else if (ref.startsWith('S')) {
-          transportType = 'light_rail';
-        } else {
-          transportType = 'bus';
-        }
-      } else if (route.properties.containsKey('name')) {
-        final name = route.properties['name'].toString().toLowerCase();
-        if (name.contains('u-bahn') ||
-            name.contains('u ') ||
-            name.contains('u7')) {
-          transportType = 'subway';
-        } else if (name.contains('s-bahn') || name.contains('s ')) {
-          transportType = 'light_rail';
-        } else if (name.contains('tram')) {
-          transportType = 'tram';
-        } else if (name.contains('bus')) {
-          transportType = 'bus';
-        }
-      }
-    }
-
-    return transportType.toLowerCase();
-  }
-
-  /// Checks if a route is relevant for the journey (passes near start and end)
-  bool _isRouteRelevant(RouteFeature route, LatLng start, LatLng end) {
-    if (route.coordinates.isEmpty) return false;
-
-    const double maxDistance = 1000; // 1km threshold
-
-    bool nearStart = route.coordinates.any(
-      (coord) => _calculateDistance(coord, start) < maxDistance,
-    );
-    bool nearEnd = route.coordinates.any(
-      (coord) => _calculateDistance(coord, end) < maxDistance,
-    );
-
-    return nearStart && nearEnd;
-  }
-
-  /// Determines if one route is better than another for the current journey
-  bool _isRouteBetter(
-    RouteFeature route1,
-    RouteFeature route2,
-    LatLng start,
-    LatLng end,
-  ) {
-    // Prefer routes that are closer to both start and end points
-    double route1StartDist = route1.coordinates
-        .map((coord) => _calculateDistance(coord, start))
-        .reduce((a, b) => a < b ? a : b);
-    double route1EndDist = route1.coordinates
-        .map((coord) => _calculateDistance(coord, end))
-        .reduce((a, b) => a < b ? a : b);
-
-    double route2StartDist = route2.coordinates
-        .map((coord) => _calculateDistance(coord, start))
-        .reduce((a, b) => a < b ? a : b);
-    double route2EndDist = route2.coordinates
-        .map((coord) => _calculateDistance(coord, end))
-        .reduce((a, b) => a < b ? a : b);
-
-    return (route1StartDist + route1EndDist) <
-        (route2StartDist + route2EndDist);
-  }
-
-  /// Segments a route to only show the relevant part between start and end
-  RouteFeature _segmentRoute(RouteFeature route, LatLng start, LatLng end) {
-    if (route.coordinates.length < 2) return route;
-
-    // Find the closest points on the route to start and end
-    int startIndex = _findClosestPointIndex(route.coordinates, start);
-    int endIndex = _findClosestPointIndex(route.coordinates, end);
-
-    // Ensure proper order
-    if (startIndex > endIndex) {
-      int temp = startIndex;
-      startIndex = endIndex;
-      endIndex = temp;
-    }
-
-    // Extract the segment (with some padding)
-    int segmentStart = (startIndex - 5).clamp(0, route.coordinates.length - 1);
-    int segmentEnd = (endIndex + 5).clamp(0, route.coordinates.length - 1);
-
-    List<LatLng> segmentCoordinates = route.coordinates.sublist(
-      segmentStart,
-      segmentEnd + 1,
-    );
-
-    return RouteFeature(
-      type: route.type,
-      id: route.id,
-      properties: route.properties,
-      coordinates: segmentCoordinates,
-    );
-  }
-
-  /// Finds the index of the point closest to the target
-  int _findClosestPointIndex(List<LatLng> points, LatLng target) {
-    double minDistance = double.infinity;
-    int closestIndex = 0;
-
-    for (int i = 0; i < points.length; i++) {
-      double distance = _calculateDistance(points[i], target);
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestIndex = i;
-      }
-    }
-
-    return closestIndex;
   }
 
   /// Calculates distance between two LatLng points in meters
