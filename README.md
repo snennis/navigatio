@@ -521,13 +521,3 @@ Copyright (c) 2026 Dennis - Navigatio Project
 | 🛤️ **[GraphHopper](https://graphhopper.com)** | Routing Engine | Apache-2 |
 | 🚊 **[VBB](https://www.vbb.de)** | GTFS-Daten Berlin | Open Data |
 | 🎨 **[CartoDB](https://carto.com)** | Kartenstile | Carto License |
-
-
-### **📊 Project Stats**
-
-- ⭐ **Stars**: Zeigen Sie Ihre Unterstützung!
-- 🍴 **Forks**: Community-Contributions willkommen
-- 📈 **Issues**: Aktive Entwicklung und Bug-Fixes
-- 🚀 **Releases**: Regelmäßige Updates und Features
-
----
