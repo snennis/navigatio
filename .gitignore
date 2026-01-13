@@ -48,4 +48,13 @@ docs/internal/
 internal/
 
 # GTFS Files
+*.dump
+gtfs_dump.dump
+gtfs_data/
+*.sql.gz
+
+# Database dumps and backups
+*.backup
+*.bak
+database_dumps/
 GTFS/*.txt
