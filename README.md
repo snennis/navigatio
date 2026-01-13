@@ -511,14 +511,6 @@ MIT License - Frei für kommerzielle und private Nutzung
 Copyright (c) 2026 Dennis - Navigatio Project
 ```
 
-## 👥 Team & Credits
-
-### **👨‍💻 Entwickler**
-- **Dennis** - *Lead Developer & Project Owner*
-  - 📧 Email: dennis@navigatio.app
-  - 🔗 GitHub: [@dennis](https://github.com/dennis)
-  - 🎓 5. Semester Informatik
-
 ### **🙏 Danksagungen & Attribution**
 
 | Projekt/Service | Zweck | Lizenz |
@@ -529,16 +521,6 @@ Copyright (c) 2026 Dennis - Navigatio Project
 | 🛤️ **[GraphHopper](https://graphhopper.com)** | Routing Engine | Apache-2 |
 | 🚊 **[VBB](https://www.vbb.de)** | GTFS-Daten Berlin | Open Data |
 | 🎨 **[CartoDB](https://carto.com)** | Kartenstile | Carto License |
-
-### **📚 Akademischer Kontext**
-
-```
-🎓 Hochschule: [Ihre Hochschule]
-📘 Kurs: Navigation & Geoinformatik  
-📅 Semester: 5. Semester (WS 2025/26)
-👨‍🏫 Betreuer: [Professor Name]
-📊 Projekt-Typ: Praxisprojekt & Thesis
-```
 
 ## 📞 Support & Community
 
