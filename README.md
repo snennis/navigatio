@@ -531,13 +531,3 @@ Copyright (c) 2026 Dennis - Navigatio Project
 - 🚀 **Releases**: Regelmäßige Updates und Features
 
 ---
-
-<div align="center">
-
-**🗺️ Navigatio** - *Intelligente Navigation für Berlin*
-
-[🌟 Star uns auf GitHub](https://github.com/dennis/navigatio) • [📝 Contribute](CONTRIBUTING.md) • [📖 Docs](https://github.com/dennis/navigatio/wiki) • [🐛 Report Bug](https://github.com/dennis/navigatio/issues)
-
-*Entwickelt mit ❤️ in Berlin*
-
-</div>
