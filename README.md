@@ -522,14 +522,6 @@ Copyright (c) 2026 Dennis - Navigatio Project
 | 🚊 **[VBB](https://www.vbb.de)** | GTFS-Daten Berlin | Open Data |
 | 🎨 **[CartoDB](https://carto.com)** | Kartenstile | Carto License |
 
-## 📞 Support & Community
-
-### **💬 Getting Help**
-
-- 📖 **[Wiki](https://github.com/dennis/navigatio/wiki)** - Ausführliche Dokumentation
-- 🐛 **[Issues](https://github.com/dennis/navigatio/issues)** - Bug Reports & Feature Requests  
-- 💬 **[Discussions](https://github.com/dennis/navigatio/discussions)** - Q&A Community
-- 📧 **Email**: support@navigatio.app
 
 ### **📊 Project Stats**
 
