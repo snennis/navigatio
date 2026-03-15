@@ -10,7 +10,7 @@ const port = process.env.PORT || 3000;
 // GraphHopper Configuration
 const GRAPHHOPPER_URL = process.env.GRAPHHOPPER_URL || 'http://localhost:8989';
 const GRAPHHOPPER_PROFILE = process.env.GRAPHHOPPER_PROFILE || 'foot';
-const USE_PUBLIC_TRANSPORT = process.env.USE_PUBLIC_TRANSPORT === 'true' || true; // Default: use PT
+const USE_PUBLIC_TRANSPORT = process.env.USE_PUBLIC_TRANSPORT === 'true'; // || true; // Default: use PT
 
 // PostgreSQL Connection (OSM data)
 const pool = new Pool({
@@ -25,7 +25,7 @@ const pool = new Pool({
 const gtfsPool = new Pool({
   user: process.env.DB_USER,
   host: process.env.DB_HOST,
-  database: 'osm2gtfs',
+  database: 'gtfs_berlin',
   password: process.env.DB_PASSWORD,
   port: process.env.DB_PORT,
 });
@@ -92,7 +92,13 @@ pool.connect((err, client, release) => {
     release();
   }
 });
+pool.query('SELECT current_database(), current_user')
+  .then(r => console.log('OSM pool connected to:', r.rows[0]))
+  .catch(err => console.error('OSM pool check failed:', err.message));
 
+gtfsPool.query('SELECT current_database(), current_user')
+  .then(r => console.log('GTFS pool connected to:', r.rows[0]))
+  .catch(err => console.error('GTFS pool check failed:', err.message));
 // API Routes
 
 // Get ÖPNV stops/stations (points)
@@ -392,26 +398,47 @@ app.get('/api/routes/calculate', async (req, res) => {
     let graphhopperUrl;
     let graphhopperParams;
     
-    if (USE_PUBLIC_TRANSPORT) {
-      // Use Public Transport endpoint
-      graphhopperUrl = `${GRAPHHOPPER_URL}/route-pt`;
+    //if (USE_PUBLIC_TRANSPORT) {
+    //  // Use Public Transport endpoint
+    //  graphhopperUrl = `${GRAPHHOPPER_URL}/route-pt`;
+    //  
+    //  // Get current time or use provided time
+    //  const now = new Date();
+    //  const departureTime = now.toISOString();
+    //  
+    //  graphhopperParams = {
+    //    point: [
+    //      `${fromStation.stop_lat},${fromStation.stop_lon}`,
+    //      `${toStation.stop_lat},${toStation.stop_lon}`
+    //    ],
+    //    'pt.earliest_departure_time': departureTime,
+    //    'pt.profile': true,
+    //    locale: 'de',
+    //    instructions: true,
+    //    'pt.limit_solutions': 3
+    //  };
+    //} else {
+      if (USE_PUBLIC_TRANSPORT) {
+  // Public Transport über /route mit profile=pt
+  graphhopperUrl = `${GRAPHHOPPER_URL}/route`;
+
+  const now = new Date();
+  const departureTime = now.toISOString();
+
+  graphhopperParams = {
+    point: [
+      `${fromStation.stop_lat},${fromStation.stop_lon}`,
+      `${toStation.stop_lat},${toStation.stop_lon}`
+    ],
+    profile: 'pt',
+    locale: 'de',
+    instructions: true,
+    points_encoded: false,
+    'pt.earliest_departure_time': departureTime,
+    'pt.limit_solutions': 3
+  };
+} else {
       
-      // Get current time or use provided time
-      const now = new Date();
-      const departureTime = now.toISOString();
-      
-      graphhopperParams = {
-        point: [
-          `${fromStation.stop_lat},${fromStation.stop_lon}`,
-          `${toStation.stop_lat},${toStation.stop_lon}`
-        ],
-        'pt.earliest_departure_time': departureTime,
-        'pt.profile': true,
-        locale: 'de',
-        instructions: true,
-        'pt.limit_solutions': 3
-      };
-    } else {
       // Use regular routing endpoint (foot/bike/car)
       graphhopperUrl = `${GRAPHHOPPER_URL}/route`;
       graphhopperParams = {

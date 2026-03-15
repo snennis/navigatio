@@ -225,14 +225,17 @@ class RouteProperties {
 
 /// Ein Abschnitt (Leg) einer ÖPNV-Route
 class RouteLeg {
-  final String? type; // z.B. 'pt', 'walk', 'bike'
+  final String? type;
   final String? departureLocation;
   final String? arrivalLocation;
   final double? distance;
   final double? duration;
-  final String? routeId; // z.B. 'U7', 'S1'
-  final String? headsign; // Richtung
+  final String? routeId;
+  final String? headsign;
   final Map<String, dynamic>? geometry;
+
+  // ⭐ NEU: Haltestellenliste
+  final List<RouteStop>? stops;
 
   RouteLeg({
     this.type,
@@ -243,6 +246,7 @@ class RouteLeg {
     this.routeId,
     this.headsign,
     this.geometry,
+    this.stops,
   });
 
   factory RouteLeg.fromJson(Map<String, dynamic> json) {
@@ -250,16 +254,26 @@ class RouteLeg {
       type: json['type'],
       departureLocation:
           json['departureLocation'] ?? json['departure_location'],
-      arrivalLocation: json['arrivalLocation'] ?? json['arrival_location'],
+      arrivalLocation:
+          json['arrivalLocation'] ?? json['arrival_location'],
       distance: json['distance']?.toDouble(),
       duration: json['duration']?.toDouble(),
-      routeId: json['routeId'] ?? json['route_id'] ?? json['trip_id'],
+      routeId: json['route_short_name'] ??
+         json['routeId'] ??
+         json['route_id'] ??
+         json['trip_id'],
       headsign: json['headsign'] ?? json['trip_headsign'],
       geometry: json['geometry'],
+
+      // ⭐ Stops laden
+      stops: json['stops'] != null
+          ? (json['stops'] as List)
+              .map((s) => RouteStop.fromJson(s))
+              .toList()
+          : null,
     );
   }
 
-  /// Gibt den Typ als lesbaren Text zurück
   String getTypeLabel() {
     switch (type?.toLowerCase()) {
       case 'pt':
@@ -273,7 +287,6 @@ class RouteLeg {
     }
   }
 
-  /// Formatiert die Entfernung
   String getFormattedDistance() {
     if (distance == null) return '';
     if (distance! < 1000) {
@@ -283,7 +296,6 @@ class RouteLeg {
     }
   }
 
-  /// Formatiert die Dauer
   String getFormattedDuration() {
     if (duration == null) return '';
     final minutes = (duration! / 60).round();
@@ -445,5 +457,33 @@ extension TransitExtract on GraphHopperRouteResponse {
 
     final text = headsign.toLowerCase();
     return numericStart || text.contains("bus") || text.contains("line");
+  }
+}
+
+class RouteStop {
+  final String stopId;
+  final String stopName;
+  final LatLng coordinates;
+  final String? arrivalTime;
+  final String? departureTime;
+
+  RouteStop({
+    required this.stopId,
+    required this.stopName,
+    required this.coordinates,
+    this.arrivalTime,
+    this.departureTime,
+  });
+
+  factory RouteStop.fromJson(Map<String, dynamic> json) {
+    final coords = json['geometry']['coordinates'];
+
+    return RouteStop(
+      stopId: json['stop_id'],
+      stopName: json['stop_name'],
+      coordinates: LatLng(coords[1], coords[0]),
+      arrivalTime: json['arrival_time'],
+      departureTime: json['departure_time'],
+    );
   }
 }

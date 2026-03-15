@@ -85,6 +85,11 @@ class RouteDetailsSheet extends StatelessWidget {
             ),
             const SizedBox(height: 40),
             _buildSummaryCard(context),
+
+const SizedBox(height: 20),
+
+if (routeResponse.route.properties.legs != null)
+  ..._buildLegsList(context),
           ],
         ),
       ),
@@ -324,132 +329,174 @@ class RouteDetailsSheet extends StatelessWidget {
     );
   }
 
-  List<Widget> _buildLegsList(BuildContext context) {
-    final legs = routeResponse.route.properties.legs!;
+List<Widget> _buildLegsList(BuildContext context) {
+  final legs = routeResponse.route.properties.legs!;
 
-    return legs.map((leg) {
-      // Farben für verschiedene Transport-Typen
-      Color legColor = Colors.blue;
-      IconData legIcon = Icons.directions_walk_rounded;
+  return legs.map((leg) {
+    Color legColor = Colors.blue;
+    IconData legIcon = Icons.directions_walk_rounded;
 
-      switch (leg.type?.toLowerCase()) {
-        case 'pt':
-          legColor = Colors.green;
-          legIcon = Icons.directions_transit_rounded;
-          break;
-        case 'walk':
-          legColor = Colors.orange;
-          legIcon = Icons.directions_walk_rounded;
-          break;
-        case 'bike':
-          legColor = Colors.purple;
-          legIcon = Icons.directions_bike_rounded;
-          break;
-      }
+    switch (leg.type?.toLowerCase()) {
+      case 'pt':
+        legColor = Colors.green;
+        legIcon = Icons.directions_transit_rounded;
+        break;
+      case 'walk':
+        legColor = Colors.orange;
+        legIcon = Icons.directions_walk_rounded;
+        break;
+      case 'bike':
+        legColor = Colors.purple;
+        legIcon = Icons.directions_bike_rounded;
+        break;
+    }
 
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: legColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: legColor.withOpacity(0.3), width: 2),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Icon
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: legColor,
-                  shape: BoxShape.circle,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: legColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: legColor.withOpacity(0.3), width: 2),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+
+            /// ===== LEG HEADER =====
+
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: legColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    legIcon,
+                    color: Colors.white,
+                    size: 18,
+                  ),
                 ),
-                child: Icon(legIcon, color: Colors.white, size: 20),
-              ),
-              const SizedBox(width: 12),
-              // Details
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      leg.getTypeLabel(),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: legColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    if (leg.routeId != null)
+
+                const SizedBox(width: 10),
+
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+
                       Text(
-                        '${leg.routeId}${leg.headsign != null ? ' → ${leg.headsign}' : ''}',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
+                        leg.getTypeLabel(),
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: legColor,
+                              fontWeight: FontWeight.bold,
+                            ),
                       ),
-                    if (leg.departureLocation != null ||
-                        leg.arrivalLocation != null) ...[
+
                       const SizedBox(height: 4),
-                      Text(
-                        '${leg.departureLocation ?? ''} → ${leg.arrivalLocation ?? ''}',
-                        style: Theme.of(context).textTheme.bodySmall,
+
+                      if (leg.routeId != null)
+                        Text(
+                          '${leg.routeId}${leg.headsign != null ? ' → ${leg.headsign}' : ''}',
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+
+                      if (leg.departureLocation != null ||
+                          leg.arrivalLocation != null)
+                        Text(
+                          '${leg.departureLocation ?? ''} → ${leg.arrivalLocation ?? ''}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+
+                      const SizedBox(height: 6),
+
+                      Row(
+                        children: [
+
+                          if (leg.distance != null) ...[
+                            const Icon(Icons.straighten_rounded, size: 14),
+                            const SizedBox(width: 4),
+                            Text(leg.getFormattedDistance()),
+                            const SizedBox(width: 10),
+                          ],
+
+                          if (leg.duration != null) ...[
+                            const Icon(Icons.access_time_rounded, size: 14),
+                            const SizedBox(width: 4),
+                            Text(leg.getFormattedDuration()),
+                          ],
+                        ],
                       ),
                     ],
-                    const SizedBox(height: 6),
-                    Row(
+                  ),
+                ),
+              ],
+            ),
+
+            /// ===== STOPS LIST =====
+
+            if (leg.stops != null && leg.stops!.isNotEmpty) ...[
+              const SizedBox(height: 12),
+
+              Column(
+                children: leg.stops!.map((stop) {
+
+                  String? time;
+
+                  if (stop.arrivalTime != null) {
+                    time = stop.arrivalTime!.substring(11, 16);
+                  } else if (stop.departureTime != null) {
+                    time = stop.departureTime!.substring(11, 16);
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
                       children: [
-                        if (leg.distance != null) ...[
-                          Icon(
-                            Icons.straighten_rounded,
-                            size: 14,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withOpacity(0.6),
+
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.black,
+                            shape: BoxShape.circle,
                           ),
-                          const SizedBox(width: 4),
+                        ),
+
+                        const SizedBox(width: 10),
+
+                        Expanded(
+                          child: Text(
+                            stop.stopName,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+
+                        if (time != null)
                           Text(
-                            leg.getFormattedDistance(),
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface.withOpacity(0.6),
-                                ),
+                            time,
+                            style: Theme.of(context).textTheme.bodySmall,
                           ),
-                          const SizedBox(width: 12),
-                        ],
-                        if (leg.duration != null) ...[
-                          Icon(
-                            Icons.access_time_rounded,
-                            size: 14,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurface.withOpacity(0.6),
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            leg.getFormattedDuration(),
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                  color: Theme.of(
-                                    context,
-                                  ).colorScheme.onSurface.withOpacity(0.6),
-                                ),
-                          ),
-                        ],
                       ],
                     ),
-                  ],
-                ),
+                  );
+
+                }).toList(),
               ),
             ],
-          ),
+          ],
         ),
-      );
-    }).toList();
-  }
+      ),
+    );
+  }).toList();
+}
 
   Widget _buildInstructionItem(
     BuildContext context,
